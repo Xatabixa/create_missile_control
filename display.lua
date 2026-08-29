@@ -299,7 +299,7 @@ local function inputLoop()
 
     while state.system.running do
 
-        local event, key =
+        local _, key =
             os.pullEvent("key")
 
         if key == keys.left then
@@ -321,7 +321,6 @@ local function inputLoop()
         elseif key == keys.q then
 
             state.system.running = false
-
             return
 
         end

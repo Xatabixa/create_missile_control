@@ -91,3 +91,7 @@ while state.system.running do
     sleep(0.05)
 
 end
+
+-- Safety shutdown
+thruster.setVector(0, 0)
+thruster.setThrustNormalized(0)
