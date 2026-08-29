@@ -32,15 +32,16 @@ local state = {
 
         gravity = 0,
 
-        heading = 0,
+        heading = 0
+    },
 
-        bearing = 0,
+    target = {
 
-        elevation = 0,
+        x = 0,
+        y = 0,
+        z = 0,
 
-        distance = 0,
-
-        targetVelocity = 0
+        set = false
     },
 
     guidance = {

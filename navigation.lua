@@ -14,10 +14,11 @@ if not navigation then
 
     state.navigation.online = false
 
-    while true do
+    while state.system.running do
         sleep(1)
     end
 
+    return
 end
 
 state.navigation.online = true
@@ -33,32 +34,10 @@ local function safeCall(method)
     end
 
     local ok, result =
-        pcall(
-            navigation[method]
-        )
+        pcall(navigation[method])
 
     if ok then
         return result
-    end
-
-    return nil
-end
-
---------------------------------------------------
--- TRY METHODS
---------------------------------------------------
-
-local function tryMethods(methods)
-
-    for _, method in ipairs(methods) do
-
-        local value =
-            safeCall(method)
-
-        if value ~= nil then
-            return value
-        end
-
     end
 
     return nil
@@ -71,18 +50,15 @@ end
 local function update()
 
     --------------------------------------------------
-    -- HEADING
+    -- TARGET
     --------------------------------------------------
 
-    local heading =
-        tryMethods({
-            "getHeading",
-            "getHeadingRad",
-            "getYaw"
-        })
+    local hasTarget =
+        safeCall("hasTarget")
 
-    if heading then
-        state.navigation.heading = heading
+    if hasTarget ~= nil then
+        state.navigation.hasTarget =
+            hasTarget
     end
 
     --------------------------------------------------
@@ -90,14 +66,34 @@ local function update()
     --------------------------------------------------
 
     local bearing =
-        tryMethods({
-            "getBearing",
-            "getBearingRad",
-            "getTargetBearing"
-        })
+        safeCall("getBearingRad")
 
-    if bearing then
-        state.navigation.bearing = bearing
+    if bearing == nil then
+        bearing =
+            safeCall("getBearing")
+    end
+
+    if bearing ~= nil then
+
+        state.navigation.bearing =
+            bearing
+
+    end
+
+    --------------------------------------------------
+    -- VERTICAL OFFSET
+    --------------------------------------------------
+
+    local vertical =
+        safeCall(
+            "getVerticalOffsetToTarget"
+        )
+
+    if vertical ~= nil then
+
+        state.navigation.elevation =
+            vertical
+
     end
 
     --------------------------------------------------
@@ -105,97 +101,71 @@ local function update()
     --------------------------------------------------
 
     local distance =
-        tryMethods({
-            "getDistance",
-            "getDistanceToTarget",
-            "getTargetDistance"
-        })
+        safeCall(
+            "getDistanceToTarget"
+        )
 
-    if distance then
-        state.navigation.distance = distance
-    end
+    if distance ~= nil then
 
-    --------------------------------------------------
-    -- VELOCITY
-    --------------------------------------------------
-
-    local velocity =
-        tryMethods({
-            "getVelocity",
-            "getVelocityVector",
-            "getLinearVelocity"
-        })
-
-    if type(velocity) == "table" then
-
-        state.navigation.velocity.x =
-            velocity.x or velocity[1] or 0
-
-        state.navigation.velocity.y =
-            velocity.y or velocity[2] or 0
-
-        state.navigation.velocity.z =
-            velocity.z or velocity[3] or 0
+        state.navigation.distance =
+            distance
 
     end
 
     --------------------------------------------------
-    -- ACCELERATION
+    -- CLOSURE RATE
     --------------------------------------------------
 
-    local acceleration =
-        tryMethods({
-            "getAcceleration",
-            "getAccelerationVector"
-        })
+    local closure =
+        safeCall("getClosureRate")
 
-    if type(acceleration) == "table" then
+    if closure ~= nil then
 
-        state.navigation.acceleration.x =
-            acceleration.x or acceleration[1] or 0
-
-        state.navigation.acceleration.y =
-            acceleration.y or acceleration[2] or 0
-
-        state.navigation.acceleration.z =
-            acceleration.z or acceleration[3] or 0
+        state.navigation.closureRate =
+            closure
 
     end
 
     --------------------------------------------------
-    -- GRAVITY
+    -- HEADING
     --------------------------------------------------
 
-    local gravity =
-        tryMethods({
-            "getGravity",
-            "getGravityVector"
-        })
+    local heading =
+        safeCall("getHeadingRad")
 
-    if type(gravity) == "number" then
+    if heading == nil then
+        heading =
+            safeCall("getHeading")
+    end
 
-        state.navigation.gravity =
-            gravity
+    if heading ~= nil then
 
-    elseif type(gravity) == "table" then
-
-        local gx =
-            gravity.x or gravity[1] or 0
-
-        local gy =
-            gravity.y or gravity[2] or 0
-
-        local gz =
-            gravity.z or gravity[3] or 0
-
-        state.navigation.gravity =
-            math.sqrt(
-                gx * gx +
-                gy * gy +
-                gz * gz
-            )
+        state.navigation.heading =
+            heading
 
     end
+
+    --------------------------------------------------
+    -- RELATIVE ANGLE
+    --------------------------------------------------
+
+    local relativeAngle =
+        safeCall("getRelativeAngleRad")
+
+    if relativeAngle == nil then
+
+        relativeAngle =
+            safeCall("getRelativeAngle")
+
+    end
+
+    if relativeAngle ~= nil then
+
+        state.navigation.relativeAngle =
+            relativeAngle
+
+    end
+
 end
 
 --------------------------------------------------

@@ -70,7 +70,15 @@ local function drawNavigation()
 
     print("")
 
-    print("Gravity: " .. fmt(n.gravity))
+    print(
+        "Gravity: " ..
+        fmt(n.gravity)
+    )
+
+    print(
+        "Target: " ..
+        (n.hasTarget and "LOCKED" or "NONE")
+    )
 
     print(
         "Heading: " ..
@@ -85,14 +93,24 @@ local function drawNavigation()
     )
 
     print(
-        "Elevation: " ..
-        fmt(math.deg(n.elevation)) ..
+        "Relative: " ..
+        fmt(math.deg(n.relativeAngle)) ..
         " deg"
+    )
+
+    print(
+        "Vertical: " ..
+        fmt(n.elevation)
     )
 
     print(
         "Distance: " ..
         fmt(n.distance)
+    )
+
+    print(
+        "Closure: " ..
+        fmt(n.closureRate)
     )
 end
 
@@ -232,23 +250,47 @@ local function drawSystem()
     )
 
     print("")
+    print("--------------------------------")
 
-    print(
-        "Mode: " ..
-        state.system.mode
-    )
-
+    print("IMPACT POINT")
     print("")
 
-    print("THRUST LOCK: ACTIVE")
+    if state.target.set then
+
+        print(
+            "X: " ..
+            fmt(state.target.x)
+        )
+
+        print(
+            "Y: " ..
+            fmt(state.target.y)
+        )
+
+        print(
+            "Z: " ..
+            fmt(state.target.z)
+        )
+
+        print("")
+        print("STATUS: SET")
+
+    else
+
+        print("X: ---")
+        print("Y: ---")
+        print("Z: ---")
+
+        print("")
+        print("STATUS: NOT SET")
+
+    end
 
     print("")
     print("--------------------------------")
-    print("← Navigation")
-    print("↑ Guidance")
-    print("→ Thruster")
-    print("↓ System")
-    print("Q Shutdown")
+    print("I = SET IMPACT POINT")
+    print("Q = SHUTDOWN")
+
 end
 
 --------------------------------------------------
@@ -292,6 +334,46 @@ local function displayLoop()
 end
 
 --------------------------------------------------
+-- IMPACT POINT INPUT
+--------------------------------------------------
+
+local function setImpactPoint()
+
+    term.clear()
+    term.setCursorPos(1, 1)
+
+    print("=== IMPACT POINT ===")
+    print("")
+
+    write("X: ")
+    local x = tonumber(read())
+
+    if not x then
+        return
+    end
+
+    write("Y: ")
+    local y = tonumber(read())
+
+    if not y then
+        return
+    end
+
+    write("Z: ")
+    local z = tonumber(read())
+
+    if not z then
+        return
+    end
+
+    state.target.x = x
+    state.target.y = y
+    state.target.z = z
+
+    state.target.set = true
+end
+
+--------------------------------------------------
 -- INPUT LOOP
 --------------------------------------------------
 
@@ -317,6 +399,10 @@ local function inputLoop()
         elseif key == keys.down then
 
             page = 4
+        
+        elseif key == keys.i then
+
+           setImpactPoint()
 
         elseif key == keys.q then
 
