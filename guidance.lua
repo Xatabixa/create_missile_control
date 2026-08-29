@@ -3,6 +3,7 @@
 -- Does NOT control the thruster directly.
 
 local state = require("state")
+state.guidance.online = true
 
 --------------------------------------------------
 -- CONFIGURATION

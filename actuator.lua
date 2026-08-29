@@ -17,10 +17,11 @@ if not thruster then
 
     state.thruster.online = false
 
-    while true do
+    while state.system.running do
         sleep(1)
     end
 
+    return
 end
 
 state.thruster.online = true
@@ -31,52 +32,13 @@ state.thruster.online = true
 
 local function update()
 
-    --------------------------------------------------
-    -- FORCE THRUST OFF
-    --------------------------------------------------
-
-    thruster.setThrustNormalized(0)
-
-    --------------------------------------------------
-    -- GET GUIDANCE COMMAND
-    --------------------------------------------------
-
     local x =
-        state.guidance.commandX
+        state.guidance.commandX or 0
 
     local y =
-        state.guidance.commandY
+        state.guidance.commandY or 0
 
-    --------------------------------------------------
-    -- COMMAND COMPLETE VECTOR
-    --------------------------------------------------
-
-    thruster.setVector(
-        x,
-        y
-    )
-
-    --------------------------------------------------
-    -- READ RESPONSE
-    --------------------------------------------------
-
-    state.thruster.vectorX =
-        thruster.getVectorX()
-
-    state.thruster.vectorY =
-        thruster.getVectorY()
-
-    state.thruster.targetVectorX =
-        thruster.getTargetVectorX()
-
-    state.thruster.targetVectorY =
-        thruster.getTargetVectorY()
-
-    state.thruster.power =
-        thruster.getPower()
-
-    state.thruster.thrust =
-        thruster.getThrust()
+    thruster.setVector(x, y)
 
 end
 
@@ -92,6 +54,8 @@ while state.system.running do
 
 end
 
--- Safety shutdown
+--------------------------------------------------
+-- SAFETY SHUTDOWN
+--------------------------------------------------
+
 thruster.setVector(0, 0)
-thruster.setThrustNormalized(0)
