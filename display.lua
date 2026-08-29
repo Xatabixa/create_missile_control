@@ -1,8 +1,6 @@
 -- Missile system display
--- F1 = Navigation
--- F2 = Guidance
--- F3 = Thruster
--- Q  = Exit
+-- Arrow keys switch pages
+-- Q shuts down the system
 
 local state = require("state")
 
@@ -18,10 +16,7 @@ local function fmt(value)
         return "---"
     end
 
-    return string.format(
-        "%+.3f",
-        value
-    )
+    return string.format("%+.3f", value)
 end
 
 --------------------------------------------------
@@ -37,9 +32,7 @@ local function header(title)
     print("MODE: " .. state.system.mode)
     print("")
 
-    print(
-        "[F1] NAV  [F2] GUID  [F3] ENG"
-    )
+    print("[←] NAV  [↑] GUID  [→] ENG  [↓] SYS")
 
     print("--------------------------------")
     print(title)
@@ -54,52 +47,30 @@ local function drawNavigation()
 
     header("NAVIGATION")
 
-    local n =
-        state.navigation
+    local n = state.navigation
 
-    print(
-        "Status: " ..
-        (n.online and "ONLINE" or "OFFLINE")
-    )
+    print("Status: " ..
+        (n.online and "ONLINE" or "OFFLINE"))
 
     print("")
 
     print("POSITION")
 
-    print(
-        "X: " .. fmt(n.position.x)
-    )
-
-    print(
-        "Y: " .. fmt(n.position.y)
-    )
-
-    print(
-        "Z: " .. fmt(n.position.z)
-    )
+    print("X: " .. fmt(n.position.x))
+    print("Y: " .. fmt(n.position.y))
+    print("Z: " .. fmt(n.position.z))
 
     print("")
 
     print("VELOCITY")
 
-    print(
-        "X: " .. fmt(n.velocity.x)
-    )
-
-    print(
-        "Y: " .. fmt(n.velocity.y)
-    )
-
-    print(
-        "Z: " .. fmt(n.velocity.z)
-    )
+    print("X: " .. fmt(n.velocity.x))
+    print("Y: " .. fmt(n.velocity.y))
+    print("Z: " .. fmt(n.velocity.z))
 
     print("")
 
-    print(
-        "Gravity: " ..
-        fmt(n.gravity)
-    )
+    print("Gravity: " .. fmt(n.gravity))
 
     print(
         "Heading: " ..
@@ -110,6 +81,12 @@ local function drawNavigation()
     print(
         "Bearing: " ..
         fmt(math.deg(n.bearing)) ..
+        " deg"
+    )
+
+    print(
+        "Elevation: " ..
+        fmt(math.deg(n.elevation)) ..
         " deg"
     )
 
@@ -127,13 +104,10 @@ local function drawGuidance()
 
     header("GUIDANCE")
 
-    local g =
-        state.guidance
+    local g = state.guidance
 
-    print(
-        "Status: " ..
-        (g.online and "ONLINE" or "OFFLINE")
-    )
+    print("Status: " ..
+        (g.online and "ONLINE" or "OFFLINE"))
 
     print("")
 
@@ -149,19 +123,22 @@ local function drawGuidance()
         " deg"
     )
 
+    print(
+        "Elevation: " ..
+        fmt(
+            math.deg(
+                state.navigation.elevation
+            )
+        ) ..
+        " deg"
+    )
+
     print("")
 
-    print("COMMAND")
+    print("GUIDANCE COMMAND")
 
-    print(
-        "X: " ..
-        fmt(g.commandX)
-    )
-
-    print(
-        "Y: " ..
-        fmt(g.commandY)
-    )
+    print("X: " .. fmt(g.commandX))
+    print("Y: " .. fmt(g.commandY))
 
     print("")
 
@@ -181,68 +158,97 @@ local function drawEngine()
 
     header("VECTOR THRUSTER")
 
-    local t =
-        state.thruster
+    local t = state.thruster
 
-    print(
-        "Status: " ..
-        (t.online and "ONLINE" or "OFFLINE")
-    )
+    print("Status: " ..
+        (t.online and "ONLINE" or "OFFLINE"))
 
     print("")
 
     print("COMMAND")
 
-    print(
-        "X: " ..
-        fmt(state.guidance.commandX)
-    )
+    print("X: " ..
+        fmt(state.guidance.commandX))
 
-    print(
-        "Y: " ..
-        fmt(state.guidance.commandY)
-    )
+    print("Y: " ..
+        fmt(state.guidance.commandY))
 
     print("")
 
     print("TARGET VECTOR")
 
-    print(
-        "X: " ..
-        fmt(t.targetVectorX)
-    )
-
-    print(
-        "Y: " ..
-        fmt(t.targetVectorY)
-    )
+    print("X: " .. fmt(t.targetVectorX))
+    print("Y: " .. fmt(t.targetVectorY))
 
     print("")
 
     print("ACTUAL VECTOR")
 
-    print(
-        "X: " ..
-        fmt(t.vectorX)
-    )
-
-    print(
-        "Y: " ..
-        fmt(t.vectorY)
-    )
+    print("X: " .. fmt(t.vectorX))
+    print("Y: " .. fmt(t.vectorY))
 
     print("")
 
     print("Power: " ..
-        fmt(t.power)
-    )
+        fmt(t.power))
 
     print("Thrust: " ..
-        fmt(t.thrust)
-    )
+        fmt(t.thrust))
 
     print("")
     print("THRUST LOCK: 0")
+end
+
+--------------------------------------------------
+-- SYSTEM PAGE
+--------------------------------------------------
+
+local function drawSystem()
+
+    header("SYSTEM")
+
+    print("SYSTEM STATUS")
+    print("")
+
+    print(
+        "Navigation: " ..
+        (state.navigation.online
+        and "ONLINE"
+        or "OFFLINE")
+    )
+
+    print(
+        "Guidance:   " ..
+        (state.guidance.online
+        and "ONLINE"
+        or "OFFLINE")
+    )
+
+    print(
+        "Thruster:   " ..
+        (state.thruster.online
+        and "ONLINE"
+        or "OFFLINE")
+    )
+
+    print("")
+
+    print(
+        "Mode: " ..
+        state.system.mode
+    )
+
+    print("")
+
+    print("THRUST LOCK: ACTIVE")
+
+    print("")
+    print("--------------------------------")
+    print("← Navigation")
+    print("↑ Guidance")
+    print("→ Thruster")
+    print("↓ System")
+    print("Q Shutdown")
 end
 
 --------------------------------------------------
@@ -268,7 +274,6 @@ local function draw()
         drawSystem()
 
     end
-
 end
 
 --------------------------------------------------
@@ -277,14 +282,13 @@ end
 
 local function displayLoop()
 
-    while true do
+    while state.system.running do
 
         draw()
 
         sleep(0.1)
 
     end
-
 end
 
 --------------------------------------------------
@@ -293,7 +297,7 @@ end
 
 local function inputLoop()
 
-    while true do
+    while state.system.running do
 
         local event, key =
             os.pullEvent("key")
@@ -319,61 +323,13 @@ local function inputLoop()
             state.system.running = false
 
             return
+
         end
     end
 end
 
 --------------------------------------------------
--- SYSTEM PAGE
---------------------------------------------------
-
-local function drawSystem()
-
-    header("SYSTEM")
-
-    print("MISSILE CONTROL SYSTEM")
-    print("")
-
-    print(
-        "Mode: " ..
-        state.system.mode
-    )
-
-    print("")
-
-    print(
-        "Navigation: " ..
-        (state.navigation.online and
-        "ONLINE" or "OFFLINE")
-    )
-
-    print(
-        "Guidance:   " ..
-        (state.guidance.online and
-        "ONLINE" or "OFFLINE")
-    )
-
-    print(
-        "Thruster:   " ..
-        (state.thruster.online and
-        "ONLINE" or "OFFLINE")
-    )
-
-    print("")
-
-    print("THRUST LOCK: 0")
-
-    print("")
-    print("--------------------------------")
-    print("LEFT  = Navigation")
-    print("UP    = Guidance")
-    print("RIGHT = Thruster")
-    print("DOWN  = System")
-    print("Q     = Shutdown")
-end
-
---------------------------------------------------
--- RUN DISPLAY
+-- RUN
 --------------------------------------------------
 
 parallel.waitForAny(

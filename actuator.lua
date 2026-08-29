@@ -84,7 +84,7 @@ end
 -- MAIN LOOP
 --------------------------------------------------
 
-while true do
+while state.system.running do
 
     update()
 

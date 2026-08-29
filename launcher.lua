@@ -1,39 +1,10 @@
 -- Missile Control System
--- Main launcher
+-- Main controller
+
+local state = require("state")
 
 --------------------------------------------------
--- LOAD SHARED STATE
---------------------------------------------------
-
-local state =
-    require("state")
-
---------------------------------------------------
--- MODULES
---------------------------------------------------
-
-local modules = {
-
-    "navigation",
-    "guidance",
-    "actuator",
-    "display"
-}
-
---------------------------------------------------
--- RUN MODULE
---------------------------------------------------
-
-local function runModule(name)
-
-    shell.run(
-        name .. ".lua"
-    )
-
-end
-
---------------------------------------------------
--- START SYSTEM
+-- STARTUP
 --------------------------------------------------
 
 term.clear()
@@ -46,46 +17,40 @@ print("")
 print("Starting subsystems...")
 print("")
 
+state.system.running = true
+state.system.mode = "DRY TEST"
+
 sleep(1)
 
 --------------------------------------------------
--- PARALLEL EXECUTION
+-- MODULE RUNNERS
 --------------------------------------------------
 
-parallel.waitForAny(
+local function runNavigation()
+    shell.run("navigation.lua")
+end
 
-    function()
+local function runGuidance()
+    shell.run("guidance.lua")
+end
 
-        runModule(
-            "navigation"
-        )
+local function runActuator()
+    shell.run("actuator.lua")
+end
 
-    end,
+local function runDisplay()
+    shell.run("display.lua")
+end
 
-    function()
+--------------------------------------------------
+-- RUN EVERYTHING
+--------------------------------------------------
 
-        runModule(
-            "guidance"
-        )
-
-    end,
-
-    function()
-
-        runModule(
-            "actuator"
-        )
-
-    end,
-
-    function()
-
-        runModule(
-            "display"
-        )
-
-    end
-
+parallel.waitForAll(
+    runNavigation,
+    runGuidance,
+    runActuator,
+    runDisplay
 )
 
 --------------------------------------------------
@@ -97,4 +62,6 @@ state.system.running = false
 term.clear()
 term.setCursorPos(1, 1)
 
-print("Missile Control System stopped.")
+print("================================")
+print(" Missile Control System stopped")
+print("================================")
