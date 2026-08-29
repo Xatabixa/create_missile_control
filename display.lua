@@ -1,4 +1,4 @@
--- Missile system display
+-- Missile Control System Display
 -- Arrow keys switch pages
 -- I = set impact point
 -- Q = shutdown
@@ -6,6 +6,7 @@
 local state = require("state")
 
 local page = 1
+local inputMode = false
 
 --------------------------------------------------
 -- NUMBER FORMAT
@@ -17,10 +18,8 @@ local function fmt(value)
         return "---"
     end
 
-    return string.format(
-        "%+.3f",
-        value
-    )
+    return string.format("%.3f", value)
+
 end
 
 --------------------------------------------------
@@ -34,9 +33,10 @@ local function fmtAngle(value)
     end
 
     return string.format(
-        "%+.3f",
+        "%.2f",
         math.deg(value)
     )
+
 end
 
 --------------------------------------------------
@@ -48,15 +48,9 @@ local function header(title)
     term.clear()
     term.setCursorPos(1, 1)
 
-    print("=== MISSILE CONTROL SYSTEM ===")
-    print("MODE: " .. state.system.mode)
-    print("")
-
-    print("[←] NAV [↑] GUID [→] ENG [↓] SYS")
-
-    print("--------------------------------")
+    print("=== MISSILE SYSTEM ===")
     print(title)
-    print("--------------------------------")
+    print("----------------------")
 
 end
 
@@ -71,70 +65,41 @@ local function drawNavigation()
     local n = state.navigation
 
     print(
-        "Status: " ..
+        "NAV: " ..
         (n.online and "ONLINE" or "OFFLINE")
     )
 
     print("")
 
-    print("POSITION")
-
-    print("X: " .. fmt(n.position.x))
-    print("Y: " .. fmt(n.position.y))
-    print("Z: " .. fmt(n.position.z))
-
-    print("")
-
-    print("VELOCITY")
-
-    print("X: " .. fmt(n.velocity.x))
-    print("Y: " .. fmt(n.velocity.y))
-    print("Z: " .. fmt(n.velocity.z))
+    print("POS")
+    print("X " .. fmt(n.position.x))
+    print("Y " .. fmt(n.position.y))
+    print("Z " .. fmt(n.position.z))
 
     print("")
 
-    print("GRAVITY")
-    print(fmt(n.gravity))
+    print("VEL")
+    print("X " .. fmt(n.velocity.x))
+    print("Y " .. fmt(n.velocity.y))
+    print("Z " .. fmt(n.velocity.z))
 
     print("")
-
-    print("ORIENTATION")
 
     print(
-        "Heading: " ..
+        "GRAV " ..
+        fmt(n.gravity)
+    )
+
+    print(
+        "HDG " ..
         fmtAngle(n.heading) ..
         " deg"
     )
 
     print(
-        "Bearing: " ..
+        "BRG " ..
         fmtAngle(n.bearing) ..
         " deg"
-    )
-
-    print(
-        "Relative: " ..
-        fmtAngle(n.relativeAngle) ..
-        " deg"
-    )
-
-    print("")
-
-    print("IMPACT DATA")
-
-    print(
-        "Vertical: " ..
-        fmt(n.elevation)
-    )
-
-    print(
-        "Distance: " ..
-        fmt(n.distance)
-    )
-
-    print(
-        "Closure: " ..
-        fmt(n.closureRate)
     )
 
 end
@@ -148,53 +113,52 @@ local function drawGuidance()
     header("GUIDANCE")
 
     local g = state.guidance
+    local n = state.navigation
 
     print(
-        "Status: " ..
+        "GUID: " ..
         (g.online and "ONLINE" or "OFFLINE")
     )
 
     print("")
 
-    print("NAVIGATION INPUT")
+    print("NAVIGATION")
 
     print(
-        "Bearing: " ..
-        fmtAngle(
-            state.navigation.bearing
-        ) ..
+        "BRG " ..
+        fmtAngle(n.bearing) ..
         " deg"
     )
 
     print(
-        "Elevation: " ..
-        fmt(
-            state.navigation.elevation
-        )
+        "REL " ..
+        fmtAngle(n.relativeAngle) ..
+        " deg"
+    )
+
+    print(
+        "VERT " ..
+        fmt(n.elevation)
+    )
+
+    print(
+        "DIST " ..
+        fmt(n.distance)
     )
 
     print("")
 
-    print("GUIDANCE COMMAND")
+    print("COMMAND")
 
     print(
-        "X: " ..
+        "X " ..
         fmt(g.commandX)
     )
 
     print(
-        "Y: " ..
+        "Y " ..
         fmt(g.commandY)
     )
-
-    print("")
-
-    print("PHYSICAL AXES")
-
-    print("X+ = FORWARD")
-    print("X- = BACKWARD")
-    print("Y+ = RIGHT")
-    print("Y- = LEFT")
 
 end
 
@@ -204,12 +168,13 @@ end
 
 local function drawEngine()
 
-    header("VECTOR THRUSTER")
+    header("THRUSTER")
 
     local t = state.thruster
+    local g = state.guidance
 
     print(
-        "Status: " ..
+        "ENG: " ..
         (t.online and "ONLINE" or "OFFLINE")
     )
 
@@ -218,13 +183,13 @@ local function drawEngine()
     print("COMMAND")
 
     print(
-        "X: " ..
-        fmt(state.guidance.commandX)
+        "X " ..
+        fmt(g.commandX)
     )
 
     print(
-        "Y: " ..
-        fmt(state.guidance.commandY)
+        "Y " ..
+        fmt(g.commandY)
     )
 
     print("")
@@ -232,12 +197,12 @@ local function drawEngine()
     print("TARGET VECTOR")
 
     print(
-        "X: " ..
+        "X " ..
         fmt(t.targetVectorX)
     )
 
     print(
-        "Y: " ..
+        "Y " ..
         fmt(t.targetVectorY)
     )
 
@@ -246,27 +211,26 @@ local function drawEngine()
     print("ACTUAL VECTOR")
 
     print(
-        "X: " ..
+        "X " ..
         fmt(t.vectorX)
     )
 
     print(
-        "Y: " ..
+        "Y " ..
         fmt(t.vectorY)
     )
 
     print("")
 
-    print("Power: " ..
+    print(
+        "POWER " ..
         fmt(t.power)
     )
 
-    print("Thrust: " ..
+    print(
+        "THRUST " ..
         fmt(t.thrust)
     )
-
-    print("")
-    print("THRUST LOCK: ACTIVE")
 
 end
 
@@ -278,77 +242,60 @@ local function drawSystem()
 
     header("SYSTEM")
 
-    print("SYSTEM STATUS")
-    print("")
-
     print(
-        "Navigation: " ..
-        (
-            state.navigation.online
-            and "ONLINE"
-            or "OFFLINE"
-        )
+        "NAV " ..
+        (state.navigation.online
+        and "OK"
+        or "OFF")
     )
 
     print(
-        "Guidance:   " ..
-        (
-            state.guidance.online
-            and "ONLINE"
-            or "OFFLINE"
-        )
+        "GUID " ..
+        (state.guidance.online
+        and "OK"
+        or "OFF")
     )
 
     print(
-        "Thruster:   " ..
-        (
-            state.thruster.online
-            and "ONLINE"
-            or "OFFLINE"
-        )
+        "ENG " ..
+        (state.thruster.online
+        and "OK"
+        or "OFF")
     )
 
     print("")
-    print("--------------------------------")
 
     print("IMPACT POINT")
-    print("")
 
     if state.target.set then
 
         print(
-            "X: " ..
+            "X " ..
             fmt(state.target.x)
         )
 
         print(
-            "Y: " ..
+            "Y " ..
             fmt(state.target.y)
         )
 
         print(
-            "Z: " ..
+            "Z " ..
             fmt(state.target.z)
         )
 
-        print("")
-        print("STATUS: SET")
+        print("SET")
 
     else
 
-        print("X: ---")
-        print("Y: ---")
-        print("Z: ---")
-
-        print("")
-        print("STATUS: NOT SET")
+        print("NOT SET")
 
     end
 
     print("")
-    print("--------------------------------")
-    print("I = SET IMPACT POINT")
-    print("Q = SHUTDOWN")
+
+    print("I: SET POINT")
+    print("Q: SHUTDOWN")
 
 end
 
@@ -356,32 +303,64 @@ end
 -- IMPACT POINT INPUT
 --------------------------------------------------
 
-local function setImpactPoint()
+local function inputCoordinate(axis)
 
     term.clear()
     term.setCursorPos(1, 1)
 
-    print("=== IMPACT POINT ===")
+    print("IMPACT POINT")
+    print("----------------------")
     print("")
 
-    write("X: ")
-    local x = tonumber(read())
+    print("Enter " .. axis .. " coordinate:")
+    print("")
 
-    if not x then
+    write("> ")
+
+    local value = read()
+
+    local number = tonumber(value)
+
+    if number == nil then
+
+        print("")
+        print("INVALID NUMBER")
+        sleep(1)
+
+        return nil
+
+    end
+
+    return number
+
+end
+
+--------------------------------------------------
+-- SET IMPACT POINT
+--------------------------------------------------
+
+local function setImpactPoint()
+
+    inputMode = true
+
+    local x = inputCoordinate("X")
+
+    if x == nil then
+        inputMode = false
         return
     end
 
-    write("Y: ")
-    local y = tonumber(read())
+    local y = inputCoordinate("Y")
 
-    if not y then
+    if y == nil then
+        inputMode = false
         return
     end
 
-    write("Z: ")
-    local z = tonumber(read())
+    local z = inputCoordinate("Z")
 
-    if not z then
+    if z == nil then
+        inputMode = false
         return
     end
 
@@ -391,6 +370,27 @@ local function setImpactPoint()
 
     state.target.set = true
 
+    term.clear()
+    term.setCursorPos(1, 1)
+
+    print("IMPACT POINT")
+    print("----------------------")
+    print("")
+
+    print("SAVED")
+
+    print("")
+    print("X " .. fmt(x))
+    print("Y " .. fmt(y))
+    print("Z " .. fmt(z))
+
+    print("")
+    print("Returning...")
+
+    sleep(1)
+
+    inputMode = false
+
 end
 
 --------------------------------------------------
@@ -398,6 +398,10 @@ end
 --------------------------------------------------
 
 local function draw()
+
+    if inputMode then
+        return
+    end
 
     if page == 1 then
 
@@ -427,7 +431,11 @@ local function displayLoop()
 
     while state.system.running do
 
-        draw()
+        if not inputMode then
+
+            draw()
+
+        end
 
         sleep(0.1)
 
@@ -446,7 +454,13 @@ local function inputLoop()
         local _, key =
             os.pullEvent("key")
 
-        if key == keys.left then
+        if inputMode then
+
+            -- Coordinate input uses read().
+            -- Keyboard events are handled by read(),
+            -- so navigation keys are ignored here.
+
+        elseif key == keys.left then
 
             page = 1
 
