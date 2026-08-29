@@ -263,6 +263,10 @@ local function draw()
 
         drawEngine()
 
+    elseif page == 4 then
+
+        drawSystem()
+
     end
 
 end
@@ -294,28 +298,78 @@ local function inputLoop()
         local event, key =
             os.pullEvent("key")
 
-        if key == keys.f1 then
+        if key == keys.left then
 
             page = 1
 
-        elseif key == keys.f2 then
+        elseif key == keys.up then
 
             page = 2
 
-        elseif key == keys.f3 then
+        elseif key == keys.right then
 
             page = 3
+
+        elseif key == keys.down then
+
+            page = 4
 
         elseif key == keys.q then
 
             state.system.running = false
 
             return
-
         end
-
     end
+end
 
+--------------------------------------------------
+-- SYSTEM PAGE
+--------------------------------------------------
+
+local function drawSystem()
+
+    header("SYSTEM")
+
+    print("MISSILE CONTROL SYSTEM")
+    print("")
+
+    print(
+        "Mode: " ..
+        state.system.mode
+    )
+
+    print("")
+
+    print(
+        "Navigation: " ..
+        (state.navigation.online and
+        "ONLINE" or "OFFLINE")
+    )
+
+    print(
+        "Guidance:   " ..
+        (state.guidance.online and
+        "ONLINE" or "OFFLINE")
+    )
+
+    print(
+        "Thruster:   " ..
+        (state.thruster.online and
+        "ONLINE" or "OFFLINE")
+    )
+
+    print("")
+
+    print("THRUST LOCK: 0")
+
+    print("")
+    print("--------------------------------")
+    print("LEFT  = Navigation")
+    print("UP    = Guidance")
+    print("RIGHT = Thruster")
+    print("DOWN  = System")
+    print("Q     = Shutdown")
 end
 
 --------------------------------------------------
