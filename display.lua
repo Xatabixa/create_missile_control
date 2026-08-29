@@ -10,13 +10,16 @@ local page = 1
 -- FORMAT
 --------------------------------------------------
 
-local function fmt(value)
+local function fmtAngle(value)
 
     if type(value) ~= "number" then
         return "---"
     end
 
-    return string.format("%+.3f", value)
+    return string.format(
+        "%+.3f",
+        math.deg(value)
+    )
 end
 
 --------------------------------------------------
@@ -82,19 +85,19 @@ local function drawNavigation()
 
     print(
         "Heading: " ..
-        fmt(math.deg(n.heading)) ..
+        fmtAngle(n.heading) ..
         " deg"
     )
 
     print(
         "Bearing: " ..
-        fmt(math.deg(n.bearing)) ..
+        fmtAngle(n.bearing) ..
         " deg"
     )
 
     print(
         "Relative: " ..
-        fmt(math.deg(n.relativeAngle)) ..
+        fmtAngle(n.relativeAngle) ..
         " deg"
     )
 

@@ -12,6 +12,20 @@ local state = {
 
         online = false,
 
+        hasTarget = false,
+
+        closureRate = 0,
+
+        relativeAngle = 0,
+
+        bearing = 0,
+
+        elevation = 0,
+
+        distance = 0,
+
+        heading = 0,
+
         position = {
             x = 0,
             y = 0,
@@ -30,9 +44,7 @@ local state = {
             z = 0
         },
 
-        gravity = 0,
-
-        heading = 0
+        gravity = 0
     },
 
     target = {
