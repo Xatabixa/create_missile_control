@@ -1,13 +1,30 @@
 -- Missile system display
 -- Arrow keys switch pages
--- Q shuts down the system
+-- I = set impact point
+-- Q = shutdown
 
 local state = require("state")
 
 local page = 1
 
 --------------------------------------------------
--- FORMAT
+-- NUMBER FORMAT
+--------------------------------------------------
+
+local function fmt(value)
+
+    if type(value) ~= "number" then
+        return "---"
+    end
+
+    return string.format(
+        "%+.3f",
+        value
+    )
+end
+
+--------------------------------------------------
+-- ANGLE FORMAT
 --------------------------------------------------
 
 local function fmtAngle(value)
@@ -35,11 +52,12 @@ local function header(title)
     print("MODE: " .. state.system.mode)
     print("")
 
-    print("[←] NAV  [↑] GUID  [→] ENG  [↓] SYS")
+    print("[←] NAV [↑] GUID [→] ENG [↓] SYS")
 
     print("--------------------------------")
     print(title)
     print("--------------------------------")
+
 end
 
 --------------------------------------------------
@@ -52,8 +70,10 @@ local function drawNavigation()
 
     local n = state.navigation
 
-    print("Status: " ..
-        (n.online and "ONLINE" or "OFFLINE"))
+    print(
+        "Status: " ..
+        (n.online and "ONLINE" or "OFFLINE")
+    )
 
     print("")
 
@@ -73,15 +93,12 @@ local function drawNavigation()
 
     print("")
 
-    print(
-        "Gravity: " ..
-        fmt(n.gravity)
-    )
+    print("GRAVITY")
+    print(fmt(n.gravity))
 
-    print(
-        "Target: " ..
-        (n.hasTarget and "LOCKED" or "NONE")
-    )
+    print("")
+
+    print("ORIENTATION")
 
     print(
         "Heading: " ..
@@ -101,6 +118,10 @@ local function drawNavigation()
         " deg"
     )
 
+    print("")
+
+    print("IMPACT DATA")
+
     print(
         "Vertical: " ..
         fmt(n.elevation)
@@ -115,6 +136,7 @@ local function drawNavigation()
         "Closure: " ..
         fmt(n.closureRate)
     )
+
 end
 
 --------------------------------------------------
@@ -127,8 +149,10 @@ local function drawGuidance()
 
     local g = state.guidance
 
-    print("Status: " ..
-        (g.online and "ONLINE" or "OFFLINE"))
+    print(
+        "Status: " ..
+        (g.online and "ONLINE" or "OFFLINE")
+    )
 
     print("")
 
@@ -136,10 +160,8 @@ local function drawGuidance()
 
     print(
         "Bearing: " ..
-        fmt(
-            math.deg(
-                state.navigation.bearing
-            )
+        fmtAngle(
+            state.navigation.bearing
         ) ..
         " deg"
     )
@@ -147,19 +169,23 @@ local function drawGuidance()
     print(
         "Elevation: " ..
         fmt(
-            math.deg(
-                state.navigation.elevation
-            )
-        ) ..
-        " deg"
+            state.navigation.elevation
+        )
     )
 
     print("")
 
     print("GUIDANCE COMMAND")
 
-    print("X: " .. fmt(g.commandX))
-    print("Y: " .. fmt(g.commandY))
+    print(
+        "X: " ..
+        fmt(g.commandX)
+    )
+
+    print(
+        "Y: " ..
+        fmt(g.commandY)
+    )
 
     print("")
 
@@ -169,6 +195,7 @@ local function drawGuidance()
     print("X- = BACKWARD")
     print("Y+ = RIGHT")
     print("Y- = LEFT")
+
 end
 
 --------------------------------------------------
@@ -181,43 +208,66 @@ local function drawEngine()
 
     local t = state.thruster
 
-    print("Status: " ..
-        (t.online and "ONLINE" or "OFFLINE"))
+    print(
+        "Status: " ..
+        (t.online and "ONLINE" or "OFFLINE")
+    )
 
     print("")
 
     print("COMMAND")
 
-    print("X: " ..
-        fmt(state.guidance.commandX))
+    print(
+        "X: " ..
+        fmt(state.guidance.commandX)
+    )
 
-    print("Y: " ..
-        fmt(state.guidance.commandY))
+    print(
+        "Y: " ..
+        fmt(state.guidance.commandY)
+    )
 
     print("")
 
     print("TARGET VECTOR")
 
-    print("X: " .. fmt(t.targetVectorX))
-    print("Y: " .. fmt(t.targetVectorY))
+    print(
+        "X: " ..
+        fmt(t.targetVectorX)
+    )
+
+    print(
+        "Y: " ..
+        fmt(t.targetVectorY)
+    )
 
     print("")
 
     print("ACTUAL VECTOR")
 
-    print("X: " .. fmt(t.vectorX))
-    print("Y: " .. fmt(t.vectorY))
+    print(
+        "X: " ..
+        fmt(t.vectorX)
+    )
+
+    print(
+        "Y: " ..
+        fmt(t.vectorY)
+    )
 
     print("")
 
     print("Power: " ..
-        fmt(t.power))
+        fmt(t.power)
+    )
 
     print("Thrust: " ..
-        fmt(t.thrust))
+        fmt(t.thrust)
+    )
 
     print("")
-    print("THRUST LOCK: 0")
+    print("THRUST LOCK: ACTIVE")
+
 end
 
 --------------------------------------------------
@@ -233,23 +283,29 @@ local function drawSystem()
 
     print(
         "Navigation: " ..
-        (state.navigation.online
-        and "ONLINE"
-        or "OFFLINE")
+        (
+            state.navigation.online
+            and "ONLINE"
+            or "OFFLINE"
+        )
     )
 
     print(
         "Guidance:   " ..
-        (state.guidance.online
-        and "ONLINE"
-        or "OFFLINE")
+        (
+            state.guidance.online
+            and "ONLINE"
+            or "OFFLINE"
+        )
     )
 
     print(
         "Thruster:   " ..
-        (state.thruster.online
-        and "ONLINE"
-        or "OFFLINE")
+        (
+            state.thruster.online
+            and "ONLINE"
+            or "OFFLINE"
+        )
     )
 
     print("")
@@ -297,46 +353,6 @@ local function drawSystem()
 end
 
 --------------------------------------------------
--- DRAW
---------------------------------------------------
-
-local function draw()
-
-    if page == 1 then
-
-        drawNavigation()
-
-    elseif page == 2 then
-
-        drawGuidance()
-
-    elseif page == 3 then
-
-        drawEngine()
-
-    elseif page == 4 then
-
-        drawSystem()
-
-    end
-end
-
---------------------------------------------------
--- DISPLAY LOOP
---------------------------------------------------
-
-local function displayLoop()
-
-    while state.system.running do
-
-        draw()
-
-        sleep(0.1)
-
-    end
-end
-
---------------------------------------------------
 -- IMPACT POINT INPUT
 --------------------------------------------------
 
@@ -374,6 +390,49 @@ local function setImpactPoint()
     state.target.z = z
 
     state.target.set = true
+
+end
+
+--------------------------------------------------
+-- DRAW
+--------------------------------------------------
+
+local function draw()
+
+    if page == 1 then
+
+        drawNavigation()
+
+    elseif page == 2 then
+
+        drawGuidance()
+
+    elseif page == 3 then
+
+        drawEngine()
+
+    elseif page == 4 then
+
+        drawSystem()
+
+    end
+
+end
+
+--------------------------------------------------
+-- DISPLAY LOOP
+--------------------------------------------------
+
+local function displayLoop()
+
+    while state.system.running do
+
+        draw()
+
+        sleep(0.1)
+
+    end
+
 end
 
 --------------------------------------------------
@@ -402,18 +461,21 @@ local function inputLoop()
         elseif key == keys.down then
 
             page = 4
-        
+
         elseif key == keys.i then
 
-           setImpactPoint()
+            setImpactPoint()
 
         elseif key == keys.q then
 
             state.system.running = false
+
             return
 
         end
+
     end
+
 end
 
 --------------------------------------------------
