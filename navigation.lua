@@ -2,51 +2,27 @@
 
 local state = require("state")
 
---------------------------------------------------
--- PERIPHERALS
---------------------------------------------------
-
-local navigationTable =
-    peripheral.find("navigation_table")
-
-local altitudeSensor =
-    peripheral.find("altitude_sensor")
-
-local gimbalSensor =
-    peripheral.find("gimbal_sensor")
-
---------------------------------------------------
--- GPS
---------------------------------------------------
+local navigationTable = peripheral.find("navigation_table")
+local altitudeSensor = peripheral.find("altitude_sensor")
+local gimbalSensor = peripheral.find("gimbal_sensor")
+local velocitySensor = peripheral.find("velocity_sensor")
 
 local function updateGPS()
-
-    local x, y, z =
-        gps.locate(1, false)
+    local x, y, z = gps.locate(1, false)
 
     if x ~= nil then
-
         state.navigation.position.x = x
         state.navigation.position.y = y
         state.navigation.position.z = z
-
         state.navigation.positionValid = true
         state.navigation.gps = true
-
     else
-
         state.navigation.positionValid = false
         state.navigation.gps = false
-
     end
 end
 
---------------------------------------------------
--- NAVIGATION TABLE
---------------------------------------------------
-
 local function updateNavigationTable()
-
     if not navigationTable then
         state.navigation.navigationTable = false
         return
@@ -56,247 +32,120 @@ local function updateNavigationTable()
 
     local ok, value
 
-    ok, value =
-        pcall(
-            navigationTable.hasTarget
-        )
+    ok, value = pcall(navigationTable.hasTarget)
+    if ok and value ~= nil then state.navigation.hasNavTarget = value end
 
-    if ok and value ~= nil then
-        state.navigation.hasNavTarget = value
-    end
+    ok, value = pcall(navigationTable.getBearingRad)
+    if ok and value ~= nil then state.navigation.bearing = value end
 
-    ok, value =
-        pcall(
-            navigationTable.getBearingRad
-        )
+    ok, value = pcall(navigationTable.getRelativeAngleRad)
+    if ok and value ~= nil then state.navigation.relativeAngle = value end
 
-    if ok and value ~= nil then
-        state.navigation.bearing = value
-    end
+    ok, value = pcall(navigationTable.getVerticalOffsetToTarget)
+    if ok and value ~= nil then state.navigation.elevation = value end
 
-    ok, value =
-        pcall(
-            navigationTable.getRelativeAngleRad
-        )
+    ok, value = pcall(navigationTable.getDistanceToTarget)
+    if ok and value ~= nil then state.navigation.distance = value end
 
-    if ok and value ~= nil then
-        state.navigation.relativeAngle = value
-    end
+    ok, value = pcall(navigationTable.getClosureRate)
+    if ok and value ~= nil then state.navigation.closureRate = value end
 
-    ok, value =
-        pcall(
-            navigationTable.getVerticalOffsetToTarget
-        )
-
-    if ok and value ~= nil then
-        state.navigation.elevation = value
-    end
-
-    ok, value =
-        pcall(
-            navigationTable.getDistanceToTarget
-        )
-
-    if ok and value ~= nil then
-        state.navigation.distance = value
-    end
-
-    ok, value =
-        pcall(
-            navigationTable.getClosureRate
-        )
-
-    if ok and value ~= nil then
-        state.navigation.closureRate = value
-    end
-
-    ok, value =
-        pcall(
-            navigationTable.getHeadingRad
-        )
-
-    if ok and value ~= nil then
-        state.navigation.heading = value
-    end
+    ok, value = pcall(navigationTable.getHeadingRad)
+    if ok and value ~= nil then state.navigation.heading = value end
 end
 
---------------------------------------------------
--- ALTITUDE SENSOR
---------------------------------------------------
-
 local function updateAltitude()
-
     if not altitudeSensor then
-
         state.navigation.altitudeSensor = false
-
         return
     end
 
     state.navigation.altitudeSensor = true
 
-    local ok, value
+    local ok, value = pcall(altitudeSensor.getHeight)
+    if ok and value ~= nil then state.navigation.altitude = value end
 
-    ok, value =
-        pcall(
-            altitudeSensor.getHeight
-        )
+    ok, value = pcall(altitudeSensor.getVerticalSpeed)
+    if ok and value ~= nil then state.navigation.verticalSpeed = value end
 
-    if ok and value ~= nil then
-        state.navigation.altitude = value
-    end
+    ok, value = pcall(altitudeSensor.getAirPressure)
+    if ok and value ~= nil then state.navigation.airPressure = value end
+end
 
-    ok, value =
-        pcall(
-            altitudeSensor.getVerticalSpeed
-        )
+local function updateVelocity()
+    if not velocitySensor then return end
 
-    if ok and value ~= nil then
-        state.navigation.verticalSpeed = value
-    end
-
-    ok, value =
-        pcall(
-            altitudeSensor.getAirPressure
-        )
-
-    if ok and value ~= nil then
-        state.navigation.airPressure = value
+    local ok, values = pcall(velocitySensor.getVelocity)
+    if ok and type(values) == "table" then
+        state.navigation.velocity.x = values[1] or 0
+        state.navigation.velocity.y = values[2] or 0
+        state.navigation.velocity.z = values[3] or 0
     end
 end
 
---------------------------------------------------
--- GIMBAL SENSOR
---------------------------------------------------
-
 local function updateGimbal()
-
     if not gimbalSensor then
-
         state.navigation.gimbalSensor = false
-
         return
     end
 
     state.navigation.gimbalSensor = true
 
-    --------------------------------------------------
-    -- ATTITUDE
-    --------------------------------------------------
-
-    local ok, angles =
-        pcall(
-            gimbalSensor.getAnglesRad
-        )
-
-    if ok and type(angles) == "table" then
-
-        state.navigation.pitch =
-            angles[1] or 0
-
-        state.navigation.roll =
-            angles[2] or 0
-
+    local ok, values = pcall(gimbalSensor.getAnglesRad)
+    if ok and type(values) == "table" then
+        state.navigation.pitch = values[1] or 0
+        state.navigation.roll = values[2] or 0
     end
 
-    --------------------------------------------------
-    -- ANGULAR RATES
-    --------------------------------------------------
-
-    ok, angles =
-        pcall(
-            gimbalSensor.getAngularRatesRad
-        )
-
-    if ok and type(angles) == "table" then
-
-        state.navigation.angularRateX =
-            angles[1] or 0
-
-        state.navigation.angularRateY =
-            angles[2] or 0
-
-        state.navigation.angularRateZ =
-            angles[3] or 0
-
+    ok, values = pcall(gimbalSensor.getAngularRatesRad)
+    if ok and type(values) == "table" then
+        state.navigation.angularRateX = values[1] or 0
+        state.navigation.angularRateY = values[2] or 0
+        state.navigation.angularRateZ = values[3] or 0
     end
 
-    --------------------------------------------------
-    -- GRAVITY
-    --------------------------------------------------
-
-    ok, angles =
-        pcall(
-            gimbalSensor.getGravity
-        )
-
-    if ok and type(angles) == "table" then
-
-        state.navigation.gravityX =
-            angles[1] or 0
-
-        state.navigation.gravityY =
-            angles[2] or 0
-
-        state.navigation.gravityZ =
-            angles[3] or 0
-
+    ok, values = pcall(gimbalSensor.getGravity)
+    if ok and type(values) == "table" then
+        state.navigation.gravityX = values[1] or 0
+        state.navigation.gravityY = values[2] or 0
+        state.navigation.gravityZ = values[3] or 0
     end
 
-    --------------------------------------------------
-    -- LINEAR ACCELERATION
-    --------------------------------------------------
-
-    ok, angles =
-        pcall(
-            gimbalSensor.getLinearAcceleration
-        )
-
-    if ok and type(angles) == "table" then
-
-        state.navigation.accelerationX =
-            angles[1] or 0
-
-        state.navigation.accelerationY =
-            angles[2] or 0
-
-        state.navigation.accelerationZ =
-            angles[3] or 0
-
+    ok, values = pcall(gimbalSensor.getLinearAcceleration)
+    if ok and type(values) == "table" then
+        state.navigation.accelerationX = values[1] or 0
+        state.navigation.accelerationY = values[2] or 0
+        state.navigation.accelerationZ = values[3] or 0
     end
 end
 
---------------------------------------------------
--- STATUS
---------------------------------------------------
-
 local function updateStatus()
-
     state.navigation.online =
         navigationTable ~= nil
         or altitudeSensor ~= nil
         or gimbalSensor ~= nil
+        or velocitySensor ~= nil
 
+    if not state.navigation.online then
+        state.navigation.status = "OFFLINE"
+    else
+        state.navigation.status = "ONLINE"
+    end
 end
 
---------------------------------------------------
--- MAIN LOOP
---------------------------------------------------
+local function run()
+    while state.system.running do
+        updateStatus()
+        updateGPS()
+        updateNavigationTable()
+        updateAltitude()
+        updateVelocity()
+        updateGimbal()
+        sleep(0.05)
+    end
 
-while state.system.running do
-
-    updateStatus()
-
-    updateGPS()
-    updateNavigationTable()
-    updateAltitude()
-    updateGimbal()
-
-    sleep(0.05)
+    state.navigation.online = false
+    state.navigation.status = "OFFLINE"
 end
 
-state.navigation.online = false
-state.navigation.navigationTable = false
-state.navigation.altitudeSensor = false
-state.navigation.gimbalSensor = false
-state.navigation.gps = false
+return { run = run }
