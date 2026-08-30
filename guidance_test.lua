@@ -1,88 +1,127 @@
 -- guidance_test.lua
--- Standalone guidance vector test
--- All files are located in the computer root.
+-- Test for the real guidance.lua
+-- All system files are located in the computer root.
 
 print("================================")
-print("       GUIDANCE VECTOR TEST")
+print("       GUIDANCE SYSTEM TEST")
 print("================================")
 print("")
 
-local MAX_VECTOR = 0.25
-local BEARING_GAIN = 1.0
-local ELEVATION_GAIN = 0.05
-local DEADZONE = math.rad(0.5)
-
-local function clamp(value, min, max)
-    if value < min then
-        return min
-    end
-
-    if value > max then
-        return max
-    end
-
-    return value
+-- Check files
+if not fs.exists("state.lua") then
+    print("ERROR: state.lua not found")
+    return
 end
 
-local function calculateVector(bearing, elevation)
-    local x = 0
-    local y = 0
-
-    -- Horizontal guidance
-    if math.abs(bearing) > DEADZONE then
-        y = bearing * BEARING_GAIN
-    end
-
-    -- Vertical guidance
-    if math.abs(elevation) > 0.5 then
-        x = elevation * ELEVATION_GAIN
-    end
-
-    x = clamp(x, -MAX_VECTOR, MAX_VECTOR)
-    y = clamp(y, -MAX_VECTOR, MAX_VECTOR)
-
-    return x, y
+if not fs.exists("guidance.lua") then
+    print("ERROR: guidance.lua not found")
+    return
 end
 
-local function test(name, bearing, elevation)
-    local x, y = calculateVector(bearing, elevation)
-
-    print("--------------------------------")
-    print(name)
-    print("Bearing:   " .. tostring(bearing))
-    print("Elevation: " .. tostring(elevation))
-    print("")
-    print("VECTOR")
-    print("X: " .. string.format("%.3f", x))
-    print("Y: " .. string.format("%.3f", y))
-    print("")
-end
-
-test("CENTER", 0, 0)
-
-test("TURN RIGHT", 0.10, 0)
-
-test("TURN LEFT", -0.10, 0)
-
-test("PITCH UP", 0, 5)
-
-test("PITCH DOWN", 0, -5)
-
-test("RIGHT + UP", 0.10, 5)
-
-test("LEFT + DOWN", -0.10, -5)
-
-test("MAXIMUM POSITIVE", 10, 100)
-
-test("MAXIMUM NEGATIVE", -10, -100)
-
-print("--------------------------------")
-print("TEST COMPLETE")
-print("--------------------------------")
+print("state.lua: FOUND")
+print("guidance.lua: FOUND")
 print("")
-print("The guidance vector calculator")
-print("is working.")
+
+-- Load state.lua
+local stateFile = fs.open("state.lua", "r")
+
+if stateFile == nil then
+    print("ERROR: cannot open state.lua")
+    return
+end
+
+local stateCode = stateFile.readAll()
+stateFile.close()
+
+local stateChunk, stateError = load(stateCode)
+
+if stateChunk == nil then
+    print("ERROR loading state.lua:")
+    print(stateError)
+    return
+end
+
+local state = stateChunk()
+
+print("state.lua: LOADED")
 print("")
-print("X = pitch")
-print("Y = yaw")
-print("Range = -0.25 ... +0.25")
+
+-- Create a simple require replacement
+local oldRequire = require
+
+require = function(name)
+
+    if name == "state" then
+        return state
+    end
+
+    print("Unknown module: " .. tostring(name))
+    return nil
+end
+
+-- Load guidance.lua
+local guidanceFile = fs.open("guidance.lua", "r")
+
+if guidanceFile == nil then
+    print("ERROR: cannot open guidance.lua")
+    require = oldRequire
+    return
+end
+
+local guidanceCode = guidanceFile.readAll()
+guidanceFile.close()
+
+local guidanceChunk, guidanceError = load(guidanceCode)
+
+if guidanceChunk == nil then
+    print("ERROR loading guidance.lua:")
+    print(guidanceError)
+    require = oldRequire
+    return
+end
+
+local guidance = guidanceChunk()
+
+require = oldRequire
+
+if guidance == nil then
+    print("ERROR: guidance.lua returned nil")
+    return
+end
+
+print("guidance.lua: LOADED")
+print("")
+
+print("================================")
+print("          FILE TEST OK")
+print("================================")
+print("")
+
+print("The real guidance.lua was loaded.")
+print("The real state.lua was loaded.")
+print("")
+
+print("Available guidance functions:")
+
+if guidance.run then
+    print("run: YES")
+else
+    print("run: NO")
+end
+
+if guidance.update then
+    print("update: YES")
+else
+    print("update: NO")
+end
+
+if guidance.stop then
+    print("stop: YES")
+else
+    print("stop: NO")
+end
+
+print("")
+print("================================")
+print("       TEST FINISHED")
+print("================================")
