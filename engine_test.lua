@@ -1,6 +1,5 @@
 -- Engine and vector thruster test
--- This script directly controls the liquid vector thruster.
--- Run it instead of launcher.lua.
+-- Direct control test for the liquid vector thruster.
 
 local thruster = peripheral.find("liquid_vector_thruster")
 
@@ -32,13 +31,7 @@ local function apply()
         thruster.setThrustNormalized(throttle)
     end)
 
-    if not ok then
-        term.setCursorPos(1, 20)
-        print("ERROR: " .. tostring(err))
-        return false
-    end
-
-    return true
+    return ok, err
 end
 
 local function get(method)
@@ -64,7 +57,7 @@ local function draw()
     term.setCursorPos(1, 1)
 
     print("================================")
-    print("        ENGINE TEST")
+    print("          ENGINE TEST")
     print("================================")
     print("")
 
@@ -99,55 +92,58 @@ local function draw()
     print("")
 
     print("--------------------------------")
-    print("ENTER  Set vector + throttle")
-    print("R      Reset")
-    print("Q      Quit")
+    print("ENTER - Set values")
+    print("R     - Reset")
+    print("Q     - Quit")
     print("--------------------------------")
 end
 
-local function input()
+local function readInput()
     term.setCursorPos(1, 17)
     term.clearLine()
     term.write("X Y THROTTLE > ")
 
-    local text = read()
+    local input = read()
 
-    local sx, sy, st = text:match(
-        "^%s*([%+%-]?[%d%.]+)%s+([%+%-]?[%d%.]+)%s+([%+%-]?[%d%.]+)%s*$"
-    )
+    -- Split input into three whitespace-separated values.
+    local values = {}
 
-    if not sx or not sy or not st then
-        return false, "Format: X Y THROTTLE"
+    for value in string.gmatch(input, "%S+") do
+        table.insert(values, value)
     end
 
-    local nx = tonumber(sx)
-    local ny = tonumber(sy)
-    local nt = tonumber(st)
-
-    if not nx or not ny or not nt then
-        return false, "Invalid number"
+    if #values ~= 3 then
+        return false, "Use: X Y THROTTLE"
     end
 
-    if nx < -1 or nx > 1 then
+    local newX = tonumber(values[1])
+    local newY = tonumber(values[2])
+    local newThrottle = tonumber(values[3])
+
+    if not newX or not newY or not newThrottle then
+        return false, "Values must be numbers"
+    end
+
+    if newX < -1 or newX > 1 then
         return false, "X must be between -1 and 1"
     end
 
-    if ny < -1 or ny > 1 then
+    if newY < -1 or newY > 1 then
         return false, "Y must be between -1 and 1"
     end
 
-    if nt < 0 or nt > 1 then
+    if newThrottle < 0 or newThrottle > 1 then
         return false, "Throttle must be between 0 and 1"
     end
 
-    x = nx
-    y = ny
-    throttle = nt
+    x = newX
+    y = newY
+    throttle = newThrottle
 
     return apply()
 end
 
--- SAFETY: start with engine OFF and vector neutral.
+-- Safety startup state.
 x = 0
 y = 0
 throttle = 0
@@ -160,27 +156,32 @@ while true do
 
     if key == keys.q then
         break
+    end
 
-    elseif key == keys.r then
+    if key == keys.r then
         x = 0
         y = 0
         throttle = 0
         apply()
+        draw()
+    end
 
-    elseif key == keys.enter then
-        local ok, err = input()
+    -- read() handles the Enter key itself,
+    -- so there is no need to process keys.enter here.
+    if key == keys.enter then
+        local ok, err = readInput()
 
         if not ok then
             term.setCursorPos(1, 18)
             print("ERROR: " .. tostring(err))
             sleep(1)
         end
-    end
 
-    draw()
+        draw()
+    end
 end
 
--- SAFETY SHUTDOWN
+-- Safety shutdown.
 pcall(function()
     thruster.setThrustNormalized(0)
     thruster.setVector(0, 0)
