@@ -1,42 +1,90 @@
 -- Vector thruster actuator
+-- Automatic TVC control
 
-local state = require("state")
-
-local thruster = peripheral.find("vector_thruster")
+local thruster =
+    peripheral.find("vector_thruster")
     or peripheral.find("liquid_vector_thruster")
 
-local function updateTelemetry()
-    if not thruster then return end
+local function safeCall(object, method, ...)
+    if not object then
+        return nil
+    end
 
-    local ok, value = pcall(thruster.getVectorX)
-    if ok and value ~= nil then state.thruster.vectorX = value end
+    local fn = object[method]
 
-    ok, value = pcall(thruster.getVectorY)
-    if ok and value ~= nil then state.thruster.vectorY = value end
+    if type(fn) ~= "function" then
+        return nil
+    end
 
-    ok, value = pcall(thruster.getTargetVectorX)
-    if ok and value ~= nil then state.thruster.targetVectorX = value end
+    local ok, value = pcall(fn, ...)
 
-    ok, value = pcall(thruster.getTargetVectorY)
-    if ok and value ~= nil then state.thruster.targetVectorY = value end
+    if ok then
+        return value
+    end
 
-    ok, value = pcall(thruster.getPower)
-    if ok and value ~= nil then state.thruster.power = value end
-
-    ok, value = pcall(thruster.getThrust)
-    if ok and value ~= nil then state.thruster.thrust = value end
+    return nil
 end
 
-local function updateCommand()
-    if not thruster then return end
+local function updateTelemetry(state)
+    if not thruster then
+        return
+    end
 
-    local x = math.max(-1, math.min(1, state.guidance.commandX or 0))
-    local y = math.max(-1, math.min(1, state.guidance.commandY or 0))
+    local value =
+        safeCall(thruster, "getVectorX")
+
+    if value ~= nil then
+        state.thruster.vectorX = value
+    end
+
+    value =
+        safeCall(thruster, "getVectorY")
+
+    if value ~= nil then
+        state.thruster.vectorY = value
+    end
+
+    value =
+        safeCall(thruster, "getTargetVectorX")
+
+    if value ~= nil then
+        state.thruster.targetVectorX = value
+    end
+
+    value =
+        safeCall(thruster, "getTargetVectorY")
+
+    if value ~= nil then
+        state.thruster.targetVectorY = value
+    end
+
+    value =
+        safeCall(thruster, "getPower")
+
+    if value ~= nil then
+        state.thruster.power = value
+    end
+
+    value =
+        safeCall(thruster, "getThrust")
+
+    if value ~= nil then
+        state.thruster.thrust = value
+    end
+end
+
+local function setVector(state, x, y)
+    if not thruster then
+        return
+    end
+
+    x = math.max(-1, math.min(1, x))
+    y = math.max(-1, math.min(1, y))
 
     pcall(thruster.setVector, x, y)
 end
 
-local function run()
+local function run(state)
     if not thruster then
         state.thruster.online = false
         state.thruster.status = "OFFLINE"
@@ -52,17 +100,32 @@ local function run()
     state.thruster.status = "ONLINE"
 
     while state.system.running do
-        updateCommand()
-        updateTelemetry()
+
+        if state.system.controlEnabled
+            and state.guidance.active then
+
+            setVector(
+                state,
+                state.guidance.commandX or 0,
+                state.guidance.commandY or 0
+            )
+
+        else
+            setVector(state, 0, 0)
+        end
+
+        updateTelemetry(state)
+
         sleep(0.05)
     end
 
-    pcall(thruster.setVector, 0, 0)
+    setVector(state, 0, 0)
 
     state.thruster.vectorX = 0
     state.thruster.vectorY = 0
     state.thruster.targetVectorX = 0
     state.thruster.targetVectorY = 0
+
     state.thruster.online = false
     state.thruster.status = "OFFLINE"
 end

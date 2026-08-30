@@ -54,11 +54,13 @@ local state = {
         elevation = 0,
         distance = 0,
         closureRate = 0,
+
         hasNavTarget = false,
 
         navigationTable = false,
         altitudeSensor = false,
         gimbalSensor = false,
+
         velocitySensorX = false,
         velocitySensorY = false,
         velocitySensorZ = false,
@@ -71,21 +73,30 @@ local state = {
         online = false,
         status = "OFFLINE",
         active = false,
+
         commandX = 0,
         commandY = 0,
+
         yawError = 0,
-        pitchError = 0
+        pitchError = 0,
+
+        targetBearing = 0,
+        targetElevation = 0
     },
 
     thruster = {
         online = false,
         status = "OFFLINE",
+
         power = 0,
         thrust = 0,
+
         vectorX = 0,
         vectorY = 0,
+
         targetVectorX = 0,
         targetVectorY = 0,
+
         error = nil
     },
 
