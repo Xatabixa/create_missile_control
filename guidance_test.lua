@@ -1,6 +1,5 @@
 -- guidance_test.lua
--- Real guidance.lua test
--- All files are in the computer root.
+-- Real guidance.lua diagnostic test
 
 print("================================")
 print("       GUIDANCE SYSTEM TEST")
@@ -27,104 +26,81 @@ print("")
 
 local f = fs.open("state.lua", "r")
 
-local stateCode = f.readAll()
+if not f then
+    print("ERROR: cannot open state.lua")
+    return
+end
 
+local stateCode = f.readAll()
 f.close()
 
-local stateChunk = load(stateCode)
+local stateChunk, stateError = load(stateCode)
 
-if stateChunk == nil then
-    print("ERROR: cannot load state.lua")
+if not stateChunk then
+    print("ERROR loading state.lua")
+    print(stateError)
     return
 end
 
 local state = stateChunk()
 
+if not state then
+    print("ERROR: state.lua returned nil")
+    return
+end
+
 print("state.lua: LOADED")
 print("")
 
--- Read guidance.lua
+-- Load guidance.lua source
 
 local g = fs.open("guidance.lua", "r")
 
-local guidanceCode = g.readAll()
+if not g then
+    print("ERROR: cannot open guidance.lua")
+    return
+end
 
+local guidanceCode = g.readAll()
 g.close()
 
--- Remove the require line.
--- guidance.lua starts with:
--- local state = require("state")
+-- Replace the unsupported require("state")
+local oldLine = 'local state = require("state")'
+local newLine = 'local state = suppliedState'
 
-local firstLineEnd = string.find(guidanceCode, "\n")
-
-if firstLineEnd == nil then
-    print("ERROR: invalid guidance.lua")
+if not string.find(guidanceCode, oldLine, 1, true) then
+    print("ERROR: require line was not found")
     return
 end
 
-local secondLineEnd = string.find(
+guidanceCode = string.gsub(
     guidanceCode,
-    "\n",
-    firstLineEnd + 1
+    oldLine,
+    newLine,
+    1
 )
 
-if secondLineEnd == nil then
-    print("ERROR: invalid guidance.lua")
-    return
-end
+print("require(): BYPASSED")
+print("")
 
-local thirdLineEnd = string.find(
-    guidanceCode,
-    "\n",
-    secondLineEnd + 1
-)
+-- Make state available to guidance.lua
+suppliedState = state
 
-if thirdLineEnd == nil then
-    print("ERROR: invalid guidance.lua")
-    return
-end
+-- Compile modified guidance.lua
 
-local rest = string.sub(
-    guidanceCode,
-    thirdLineEnd + 1
-)
+local guidanceChunk, guidanceError = load(guidanceCode)
 
-local modifiedCode =
-    "local state = suppliedState\n" ..
-    rest
-
--- Create environment
-
-local env = {}
-
-setmetatable(env, {
-    __index = _G
-})
-
-env.suppliedState = state
-
--- Load modified guidance
-
-local guidanceChunk, err = load(
-    modifiedCode,
-    "guidance_test_guidance"
-)
-
-if guidanceChunk == nil then
+if not guidanceChunk then
     print("ERROR loading guidance.lua:")
-    print(err)
+    print(guidanceError)
     return
 end
 
--- Try to set environment if supported
-
-if setfenv then
-    setfenv(guidanceChunk, env)
-end
+-- Execute module
 
 local guidance = guidanceChunk()
 
-if guidance == nil then
+if not guidance then
     print("ERROR: guidance.lua returned nil")
     return
 end
@@ -132,39 +108,54 @@ end
 print("guidance.lua: LOADED")
 print("")
 
+-- Check exported functions
+
 if guidance.run then
     print("run(): FOUND")
 else
     print("run(): NOT FOUND")
-    return
 end
 
 print("")
+
+-- Show current state
+
 print("================================")
-print("       MODULE TEST PASSED")
+print("        CURRENT STATE")
 print("================================")
 print("")
 
-print("Real guidance.lua successfully loaded.")
-print("require() was bypassed.")
+print("Navigation online:")
+print(state.navigation.online)
+
+print("Navigation bearing:")
+print(state.navigation.bearing)
+
+print("Navigation elevation:")
+print(state.navigation.elevation)
+
+print("Navigation target:")
+print(state.navigation.hasNavTarget)
+
 print("")
 
-print("Guidance state:")
-
-print("ONLINE:")
+print("Guidance online:")
 print(state.guidance.online)
 
-print("STATUS:")
-print(state.guidance.status)
-
-print("ACTIVE:")
+print("Guidance active:")
 print(state.guidance.active)
 
-print("COMMAND X:")
+print("Guidance status:")
+print(state.guidance.status)
+
+print("Command X:")
 print(state.guidance.commandX)
 
-print("COMMAND Y:")
+print("Command Y:")
 print(state.guidance.commandY)
 
 print("")
-print("TEST COMPLETE")
+
+print("================================")
+print("          TEST PASSED")
+print("================================")
