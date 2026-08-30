@@ -1,19 +1,38 @@
 -- Guidance System
--- Single-folder ComputerCraft compatible version
--- Uses live navigation_table data.
--- Safe for dry testing: actuator control is NOT enabled here.
+-- Continuous proportional guidance controller.
+-- Designed for safe dry testing with a frozen missile.
+
+--------------------------------------------------
+-- CONTROLLER LIMITS
+--------------------------------------------------
 
 local MAX_VECTOR = 0.25
 
--- Gains
-local YAW_GAIN = 1.0
+-- Proportional gains.
+-- Lower values produce smoother actuator commands.
+
+local YAW_GAIN = 0.0025
 local PITCH_GAIN = 0.05
 
--- Deadzones
+-- Dead zones.
+
 local YAW_DEADZONE = math.rad(0.5)
 local PITCH_DEADZONE = math.rad(0.5)
 
-local function clamp(value, minimum, maximum)
+-- Maximum command change per update.
+-- Guidance updates every 0.05 seconds.
+
+local MAX_COMMAND_STEP = 0.025
+
+--------------------------------------------------
+-- UTILITY FUNCTIONS
+--------------------------------------------------
+
+local function clamp(
+    value,
+    minimum,
+    maximum
+)
 
     if value < minimum then
         return minimum
@@ -26,41 +45,107 @@ local function clamp(value, minimum, maximum)
     return value
 end
 
-local function normalizeAngle(angle)
+--------------------------------------------------
+
+local function normalizeAngle(
+    angle
+)
 
     while angle > math.pi do
-        angle = angle - math.pi * 2
+
+        angle =
+            angle -
+            math.pi * 2
+
     end
 
     while angle < -math.pi do
-        angle = angle + math.pi * 2
+
+        angle =
+            angle +
+            math.pi * 2
+
     end
 
     return angle
 end
 
+--------------------------------------------------
+
+local function approach(
+    current,
+    target,
+    maximumStep
+)
+
+    local difference =
+        target - current
+
+    if difference >
+        maximumStep then
+
+        return current +
+            maximumStep
+
+    end
+
+    if difference <
+        -maximumStep then
+
+        return current -
+            maximumStep
+
+    end
+
+    return target
+end
+
+--------------------------------------------------
+-- MAIN MODULE
+--------------------------------------------------
+
 local function run(state)
 
     --------------------------------------------------
-    -- Ensure guidance state exists
+    -- INITIALIZE GUIDANCE STATE
     --------------------------------------------------
 
     state.guidance =
-        state.guidance or {
-            online = false,
-            status = "OFFLINE",
+        state.guidance or {}
 
-            active = false,
+    state.guidance.online =
+        false
 
-            commandX = 0,
-            commandY = 0,
+    state.guidance.status =
+        "STARTING"
 
-            yawError = 0,
-            pitchError = 0
-        }
+    state.guidance.active =
+        false
+
+    state.guidance.commandX =
+        0
+
+    state.guidance.commandY =
+        0
+
+    state.guidance.yawError =
+        0
+
+    state.guidance.pitchError =
+        0
 
     --------------------------------------------------
-    -- Main calculation
+    -- INTERNAL COMMAND STATE
+    --------------------------------------------------
+
+    local currentCommandX =
+        0
+
+    local currentCommandY =
+        0
+
+    --------------------------------------------------
+    -- UPDATE FUNCTION
     --------------------------------------------------
 
     local function update()
@@ -69,7 +154,7 @@ local function run(state)
             state.navigation
 
         --------------------------------------------------
-        -- Navigation unavailable
+        -- NAVIGATION CHECK
         --------------------------------------------------
 
         if type(navigation) ~= "table" then
@@ -78,16 +163,30 @@ local function run(state)
                 false
 
             state.guidance.status =
-                "OFFLINE"
+                "NAV OFFLINE"
 
             state.guidance.active =
                 false
 
+            currentCommandX =
+                approach(
+                    currentCommandX,
+                    0,
+                    MAX_COMMAND_STEP
+                )
+
+            currentCommandY =
+                approach(
+                    currentCommandY,
+                    0,
+                    MAX_COMMAND_STEP
+                )
+
             state.guidance.commandX =
-                0
+                currentCommandX
 
             state.guidance.commandY =
-                0
+                currentCommandY
 
             return
         end
@@ -98,22 +197,36 @@ local function run(state)
                 false
 
             state.guidance.status =
-                "OFFLINE"
+                "NAV OFFLINE"
 
             state.guidance.active =
                 false
 
+            currentCommandX =
+                approach(
+                    currentCommandX,
+                    0,
+                    MAX_COMMAND_STEP
+                )
+
+            currentCommandY =
+                approach(
+                    currentCommandY,
+                    0,
+                    MAX_COMMAND_STEP
+                )
+
             state.guidance.commandX =
-                0
+                currentCommandX
 
             state.guidance.commandY =
-                0
+                currentCommandY
 
             return
         end
 
         --------------------------------------------------
-        -- Navigation is online
+        -- NAVIGATION ONLINE
         --------------------------------------------------
 
         state.guidance.online =
@@ -123,33 +236,30 @@ local function run(state)
             "ONLINE"
 
         --------------------------------------------------
-        -- TARGET STATUS
+        -- TARGET CHECK
         --------------------------------------------------
 
-        local targetSet =
-            (
-                type(state.target) == "table"
-                and state.target.set == true
-            )
+        local localTarget =
+            type(state.target) == "table"
+            and state.target.set == true
 
         local navigationTarget =
             navigation.hasNavTarget == true
 
         state.guidance.active =
-            targetSet or navigationTarget
+            localTarget or navigationTarget
 
         --------------------------------------------------
-        -- YAW GUIDANCE
-        --
-        -- bearing:
-        -- absolute direction from the navigation table
-        -- toward the target.
-        --
-        -- heading:
-        -- current missile heading.
-        --
-        -- yaw error:
-        -- target direction relative to missile heading.
+        -- READ HEADING
+        --------------------------------------------------
+
+        local heading =
+            tonumber(
+                navigation.heading
+            ) or 0
+
+        --------------------------------------------------
+        -- READ TARGET BEARING
         --------------------------------------------------
 
         local bearing =
@@ -157,45 +267,39 @@ local function run(state)
                 navigation.bearing
             )
 
-        local heading =
+        --------------------------------------------------
+        -- YAW ERROR
+        --------------------------------------------------
+
+        local yawError =
             tonumber(
-                navigation.heading
-            )
+                navigation.relativeAngle
+            ) or 0
 
-        local yawError = 0
+        --------------------------------------------------
+        -- Prefer bearing-heading when both values
+        -- are available.
+        --------------------------------------------------
 
-        if bearing ~= nil
-            and heading ~= nil then
+        if bearing ~= nil then
 
             yawError =
                 normalizeAngle(
                     bearing - heading
                 )
 
-        else
-
-            -- Fallback if one value is unavailable.
-            yawError =
-                tonumber(
-                    navigation.relativeAngle
-                ) or 0
-
-            yawError =
-                normalizeAngle(
-                    yawError
-                )
         end
+
+        yawError =
+            normalizeAngle(
+                yawError
+            )
 
         state.guidance.yawError =
             yawError
 
         --------------------------------------------------
-        -- PITCH GUIDANCE
-        --
-        -- elevation is vertical distance to target.
-        -- distance is total distance to target.
-        --
-        -- Calculate desired elevation angle.
+        -- PITCH
         --------------------------------------------------
 
         local verticalOffset =
@@ -217,7 +321,9 @@ local function run(state)
                 math.sqrt(
                     math.max(
                         distance * distance
-                        - verticalOffset * verticalOffset,
+                        -
+                        verticalOffset *
+                        verticalOffset,
                         0
                     )
                 )
@@ -230,10 +336,11 @@ local function run(state)
                         0.001
                     )
                 )
+
         end
 
         --------------------------------------------------
-        -- Current missile pitch
+        -- CURRENT PITCH
         --------------------------------------------------
 
         local currentPitch =
@@ -242,82 +349,119 @@ local function run(state)
             ) or 0
 
         --------------------------------------------------
-        -- Pitch error
+        -- PITCH ERROR
         --------------------------------------------------
 
         local pitchError =
-            desiredPitch -
-            currentPitch
-
-        pitchError =
             normalizeAngle(
-                pitchError
+                desiredPitch -
+                currentPitch
             )
 
         state.guidance.pitchError =
             pitchError
 
         --------------------------------------------------
-        -- YAW COMMAND
+        -- TARGET COMMAND Y
         --------------------------------------------------
 
-        local commandY =
+        local targetCommandY =
             0
 
         if math.abs(yawError) >
             YAW_DEADZONE then
 
-            commandY =
+            targetCommandY =
                 yawError *
                 YAW_GAIN
+
         end
 
         --------------------------------------------------
-        -- PITCH COMMAND
+        -- TARGET COMMAND X
         --------------------------------------------------
 
-        local commandX =
+        local targetCommandX =
             0
 
         if math.abs(pitchError) >
             PITCH_DEADZONE then
 
-            commandX =
+            targetCommandX =
                 pitchError *
                 PITCH_GAIN
+
         end
 
         --------------------------------------------------
-        -- Limit actuator commands
+        -- LIMIT TARGET COMMANDS
         --------------------------------------------------
 
-        commandX =
+        targetCommandX =
             clamp(
-                commandX,
+                targetCommandX,
                 -MAX_VECTOR,
                 MAX_VECTOR
             )
 
-        commandY =
+        targetCommandY =
             clamp(
-                commandY,
+                targetCommandY,
                 -MAX_VECTOR,
                 MAX_VECTOR
             )
 
         --------------------------------------------------
-        -- Publish commands
+        -- DO NOT DRIVE ACTUATOR UNLESS GUIDANCE
+        -- IS ACTIVE.
+        --------------------------------------------------
+
+        if not state.guidance.active then
+
+            targetCommandX =
+                0
+
+            targetCommandY =
+                0
+
+        end
+
+        --------------------------------------------------
+        -- SMOOTH COMMAND X
+        --------------------------------------------------
+
+        currentCommandX =
+            approach(
+                currentCommandX,
+                targetCommandX,
+                MAX_COMMAND_STEP
+            )
+
+        --------------------------------------------------
+        -- SMOOTH COMMAND Y
+        --------------------------------------------------
+
+        currentCommandY =
+            approach(
+                currentCommandY,
+                targetCommandY,
+                MAX_COMMAND_STEP
+            )
+
+        --------------------------------------------------
+        -- PUBLISH COMMANDS
         --------------------------------------------------
 
         state.guidance.commandX =
-            commandX
+            currentCommandX
 
         state.guidance.commandY =
-            commandY
+            currentCommandY
+
     end
 
     --------------------------------------------------
-    -- Continuous guidance loop
+    -- CONTINUOUS LOOP
     --------------------------------------------------
 
     while state.system
@@ -326,10 +470,11 @@ local function run(state)
         update()
 
         sleep(0.05)
+
     end
 
     --------------------------------------------------
-    -- Safe shutdown
+    -- SAFE SHUTDOWN
     --------------------------------------------------
 
     state.guidance.commandX =
@@ -353,6 +498,10 @@ local function run(state)
     state.guidance.status =
         "OFFLINE"
 end
+
+--------------------------------------------------
+-- MODULE EXPORT
+--------------------------------------------------
 
 return {
     run = run
