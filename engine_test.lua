@@ -1,5 +1,5 @@
 -- Engine and vector thruster test
--- Direct control test for the liquid vector thruster.
+-- Exact vector and throttle control.
 
 local thruster = peripheral.find("liquid_vector_thruster")
 
@@ -92,66 +92,107 @@ local function draw()
     print("")
 
     print("--------------------------------")
-    print("ENTER - Set values")
+    print("ENTER - Set vector/throttle")
     print("R     - Reset")
     print("Q     - Quit")
     print("--------------------------------")
 end
 
-local function readInput()
+local function readNumber(prompt)
     term.setCursorPos(1, 17)
     term.clearLine()
-    term.write("X Y THROTTLE > ")
+
+    term.write(prompt)
 
     local input = read()
+    local value = tonumber(input)
 
-    -- Split input into three whitespace-separated values.
-    local values = {}
-
-    for value in string.gmatch(input, "%S+") do
-        table.insert(values, value)
+    if not value then
+        return nil
     end
 
-    if #values ~= 3 then
-        return false, "Use: X Y THROTTLE"
-    end
+    return value
+end
 
-    local newX = tonumber(values[1])
-    local newY = tonumber(values[2])
-    local newThrottle = tonumber(values[3])
+local function inputValues()
+    term.clear()
+    term.setCursorPos(1, 1)
 
-    if not newX or not newY or not newThrottle then
-        return false, "Values must be numbers"
+    print("================================")
+    print("       SET ENGINE VALUES")
+    print("================================")
+    print("")
+    print("Enter values one by one.")
+    print("")
+
+    local newX = readNumber("Vector X (-1 to 1): ")
+
+    if newX == nil then
+        print("")
+        print("Invalid X value.")
+        sleep(1)
+        return
     end
 
     if newX < -1 or newX > 1 then
-        return false, "X must be between -1 and 1"
+        print("")
+        print("X must be between -1 and 1.")
+        sleep(1)
+        return
+    end
+
+    local newY = readNumber("Vector Y (-1 to 1): ")
+
+    if newY == nil then
+        print("")
+        print("Invalid Y value.")
+        sleep(1)
+        return
     end
 
     if newY < -1 or newY > 1 then
-        return false, "Y must be between -1 and 1"
+        print("")
+        print("Y must be between -1 and 1.")
+        sleep(1)
+        return
+    end
+
+    local newThrottle = readNumber("Throttle (0 to 1): ")
+
+    if newThrottle == nil then
+        print("")
+        print("Invalid throttle value.")
+        sleep(1)
+        return
     end
 
     if newThrottle < 0 or newThrottle > 1 then
-        return false, "Throttle must be between 0 and 1"
+        print("")
+        print("Throttle must be between 0 and 1.")
+        sleep(1)
+        return
     end
 
     x = newX
     y = newY
     throttle = newThrottle
 
-    return apply()
+    local ok, err = apply()
+
+    if not ok then
+        print("")
+        print("ERROR:")
+        print(tostring(err))
+        sleep(2)
+    end
 end
 
 -- Safety startup state.
-x = 0
-y = 0
-throttle = 0
-
 apply()
-draw()
 
 while true do
+    draw()
+
     local event, key = os.pullEvent("key")
 
     if key == keys.q then
@@ -163,21 +204,10 @@ while true do
         y = 0
         throttle = 0
         apply()
-        draw()
     end
 
-    -- read() handles the Enter key itself,
-    -- so there is no need to process keys.enter here.
     if key == keys.enter then
-        local ok, err = readInput()
-
-        if not ok then
-            term.setCursorPos(1, 18)
-            print("ERROR: " .. tostring(err))
-            sleep(1)
-        end
-
-        draw()
+        inputValues()
     end
 end
 
