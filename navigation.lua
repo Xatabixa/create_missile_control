@@ -289,16 +289,18 @@ local function updateStatus(state)
     state.navigation.lastUpdate = os.clock()
 end
 
-local function run(state)
+local function run(sharedState)
+    local state = sharedState
+
     while state.system.running do
         state.navigation.error = nil
 
-        updateStatus(state)
-        updateGPS(state)
-        updateNavigationTable(state)
-        updateAltitude(state)
-        updateVelocity(state)
-        updateGimbal(state)
+        updateStatus()
+        updateGPS()
+        updateNavigationTable()
+        updateAltitude()
+        updateVelocity()
+        updateGimbal()
 
         sleep(0.05)
     end
