@@ -1,6 +1,6 @@
 -- Guidance module
--- Calculates nozzle commands from navigation data.
--- Does NOT control the thruster directly.
+-- Calculates guidance commands.
+-- Thruster control is disabled during DRY TEST.
 
 local state = require("state")
 
@@ -11,9 +11,7 @@ local state = require("state")
 local MAX_VECTOR = 0.25
 
 local BEARING_GAIN = 1.0
-local ELEVATION_GAIN = 1.0
-
-local DEADZONE = math.rad(0.5)
+local VERTICAL_GAIN = 1.0
 
 --------------------------------------------------
 -- CLAMP
@@ -51,56 +49,34 @@ local function update()
 
     state.guidance.online = true
 
-    local bearing =
-        state.navigation.bearing
-
-    local elevation =
-        state.navigation.elevation
-
     --------------------------------------------------
-    -- Y AXIS
-    --
-    -- Y+ = RIGHT
-    -- Y- = LEFT
+    -- BEARING COMMAND
     --------------------------------------------------
 
-    local commandY = 0
-
-    if math.abs(bearing) > DEADZONE then
-
-        commandY =
-            bearing *
-            BEARING_GAIN
-    end
+    local commandY =
+        state.navigation.bearing *
+        BEARING_GAIN
 
     --------------------------------------------------
-    -- X AXIS
-    --
-    -- X+ = FORWARD
-    -- X- = BACKWARD
+    -- VERTICAL COMMAND
     --------------------------------------------------
 
-    local commandX = 0
-
-    if math.abs(elevation) > DEADZONE then
-
-        commandX =
-            elevation *
-            ELEVATION_GAIN
-    end
+    local commandX =
+        state.navigation.verticalOffset *
+        VERTICAL_GAIN
 
     --------------------------------------------------
     -- LIMIT
     --------------------------------------------------
 
-    state.guidance.commandX =
+    commandX =
         clamp(
             commandX,
             -MAX_VECTOR,
             MAX_VECTOR
         )
 
-    state.guidance.commandY =
+    commandY =
         clamp(
             commandY,
             -MAX_VECTOR,
@@ -108,17 +84,23 @@ local function update()
         )
 
     --------------------------------------------------
+    -- STORE COMMAND
+    --------------------------------------------------
+
+    state.guidance.commandX =
+        commandX
+
+    state.guidance.commandY =
+        commandY
+
+    --------------------------------------------------
     -- STATUS
     --------------------------------------------------
 
     if state.system.mode == "DRY TEST" then
-
-        state.guidance.status = "TEST"
-
+        state.guidance.status = "DRY TEST"
     else
-
         state.guidance.status = "ACTIVE"
-
     end
 
     state.guidance.lastUpdate =

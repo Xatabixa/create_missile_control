@@ -1,5 +1,4 @@
--- Navigation module
--- Reads data from the Navigation Table.
+-- Navigation telemetry module
 
 local state = require("state")
 
@@ -29,7 +28,7 @@ state.navigation.status = "WAITING"
 -- SAFE CALL
 --------------------------------------------------
 
-local function safeCall(method)
+local function call(method)
 
     if not navigation[method] then
         return nil
@@ -38,11 +37,11 @@ local function safeCall(method)
     local ok, result =
         pcall(navigation[method])
 
-    if ok then
-        return result
+    if not ok then
+        return nil
     end
 
-    return nil
+    return result
 end
 
 --------------------------------------------------
@@ -51,33 +50,18 @@ end
 
 local function update()
 
-    local receivedData = false
-
-    --------------------------------------------------
-    -- TARGET
-    --------------------------------------------------
-
-    local hasTarget =
-        safeCall("hasTarget")
-
-    if hasTarget ~= nil then
-
-        state.navigation.hasTarget =
-            hasTarget
-
-        receivedData = true
-    end
+    local dataReceived = false
 
     --------------------------------------------------
     -- BEARING
     --------------------------------------------------
 
     local bearing =
-        safeCall("getBearingRad")
+        call("getBearingRad")
 
     if bearing == nil then
         bearing =
-            safeCall("getBearing")
+            call("getBearing")
     end
 
     if bearing ~= nil then
@@ -85,56 +69,7 @@ local function update()
         state.navigation.bearing =
             bearing
 
-        receivedData = true
-    end
-
-    --------------------------------------------------
-    -- VERTICAL OFFSET
-    --------------------------------------------------
-
-    local vertical =
-        safeCall(
-            "getVerticalOffsetToTarget"
-        )
-
-    if vertical ~= nil then
-
-        state.navigation.elevation =
-            vertical
-
-        receivedData = true
-    end
-
-    --------------------------------------------------
-    -- DISTANCE
-    --------------------------------------------------
-
-    local distance =
-        safeCall(
-            "getDistanceToTarget"
-        )
-
-    if distance ~= nil then
-
-        state.navigation.distance =
-            distance
-
-        receivedData = true
-    end
-
-    --------------------------------------------------
-    -- CLOSURE RATE
-    --------------------------------------------------
-
-    local closure =
-        safeCall("getClosureRate")
-
-    if closure ~= nil then
-
-        state.navigation.closureRate =
-            closure
-
-        receivedData = true
+        dataReceived = true
     end
 
     --------------------------------------------------
@@ -142,11 +77,11 @@ local function update()
     --------------------------------------------------
 
     local heading =
-        safeCall("getHeadingRad")
+        call("getHeadingRad")
 
     if heading == nil then
         heading =
-            safeCall("getHeading")
+            call("getHeading")
     end
 
     if heading ~= nil then
@@ -154,51 +89,106 @@ local function update()
         state.navigation.heading =
             heading
 
-        receivedData = true
+        dataReceived = true
     end
 
     --------------------------------------------------
     -- RELATIVE ANGLE
     --------------------------------------------------
 
-    local relativeAngle =
-        safeCall("getRelativeAngleRad")
+    local relative =
+        call("getRelativeAngleRad")
 
-    if relativeAngle == nil then
-
-        relativeAngle =
-            safeCall("getRelativeAngle")
+    if relative == nil then
+        relative =
+            call("getRelativeAngle")
     end
 
-    if relativeAngle ~= nil then
+    if relative ~= nil then
 
         state.navigation.relativeAngle =
-            relativeAngle
+            relative
 
-        receivedData = true
+        dataReceived = true
+    end
+
+    --------------------------------------------------
+    -- VERTICAL OFFSET
+    --------------------------------------------------
+
+    local vertical =
+        call("getVerticalOffsetToTarget")
+
+    if vertical ~= nil then
+
+        state.navigation.verticalOffset =
+            vertical
+
+        dataReceived = true
+    end
+
+    --------------------------------------------------
+    -- DISTANCE
+    --------------------------------------------------
+
+    local distance =
+        call("getDistanceToTarget")
+
+    if distance ~= nil then
+
+        state.navigation.distance =
+            distance
+
+        dataReceived = true
+    end
+
+    --------------------------------------------------
+    -- CLOSURE RATE
+    --------------------------------------------------
+
+    local closure =
+        call("getClosureRate")
+
+    if closure ~= nil then
+
+        state.navigation.closureRate =
+            closure
+
+        dataReceived = true
+    end
+
+    --------------------------------------------------
+    -- ORIENTATION
+    --------------------------------------------------
+
+    local orientation =
+        call("getOrientation")
+
+    if orientation ~= nil then
+
+        state.navigation.orientation =
+            orientation
+
+        dataReceived = true
     end
 
     --------------------------------------------------
     -- STATUS
     --------------------------------------------------
 
+    state.navigation.online = true
+
+    if dataReceived then
+        state.navigation.status = "ONLINE"
+    else
+        state.navigation.status = "WAITING"
+    end
+
     state.navigation.lastUpdate =
         os.clock()
 
     state.navigation.updateCount =
         state.navigation.updateCount + 1
-
-    if receivedData then
-
-        state.navigation.online = true
-        state.navigation.status = "ONLINE"
-
-    else
-
-        state.navigation.online = true
-        state.navigation.status = "WAITING"
-
-    end
 end
 
 --------------------------------------------------

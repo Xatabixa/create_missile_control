@@ -1,4 +1,4 @@
--- Shared missile system state
+-- Shared missile control state
 
 local state = {
 
@@ -8,7 +8,8 @@ local state = {
         status = "INITIALIZING"
     },
 
-    target = {
+    -- The missile has an impact point, not a target.
+    impactPoint = {
         x = 0,
         y = 0,
         z = 0,
@@ -20,35 +21,15 @@ local state = {
         online = false,
         status = "OFFLINE",
 
-        hasTarget = false,
-
-        position = {
-            x = 0,
-            y = 0,
-            z = 0
-        },
-
-        velocity = {
-            x = 0,
-            y = 0,
-            z = 0
-        },
-
-        acceleration = {
-            x = 0,
-            y = 0,
-            z = 0
-        },
-
-        gravity = 0,
-
-        heading = 0,
         bearing = 0,
+        heading = 0,
         relativeAngle = 0,
 
-        elevation = 0,
+        verticalOffset = 0,
         distance = 0,
         closureRate = 0,
+
+        orientation = nil,
 
         lastUpdate = 0,
         updateCount = 0
