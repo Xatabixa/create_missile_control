@@ -163,60 +163,72 @@ local function draw()
     end
 end
 
+local function drawTargetInput(values, active)
+    clear()
+    writeLine(1, "=== MISSILE CONTROL SYSTEM ===")
+    writeLine(2, "TARGET COORDINATE INPUT")
+    writeLine(3, "--------------------------------")
+    writeLine(5, "Enter target coordinates:")
+    writeLine(7, (active == 1 and "> " or "  ") .. "X: " .. values[1])
+    writeLine(8, (active == 2 and "> " or "  ") .. "Y: " .. values[2])
+    writeLine(9, (active == 3 and "> " or "  ") .. "Z: " .. values[3])
+    writeLine(11, "ENTER = NEXT / SAVE")
+    writeLine(12, "BACKSPACE = DELETE")
+    writeLine(13, "ESC = CANCEL")
+end
+
 local function setImpactPoint()
-    -- Temporarily use the computer terminal for coordinate entry.
-    term.clear()
-    term.setCursorPos(1, 1)
+    local values = {"", "", ""}
+    local active = 1
 
-    print("================================")
-    print("        IMPACT POINT")
-    print("================================")
-    print("")
-    print("Enter target coordinates.")
-    print("")
+    drawTargetInput(values, active)
 
-    write("X: ")
-    local x = tonumber(read())
-    if not x then
-        print("Invalid X coordinate.")
-        sleep(1)
-        return
+    while true do
+        local event, a = os.pullEventRaw()
+
+        if event == "char" then
+            if type(a) == "string" and #a == 1 then
+                if a:match("[%d%.-]") then
+                    values[active] = values[active] .. a
+                    drawTargetInput(values, active)
+                end
+            end
+        elseif event == "key" then
+            if a == keys.backspace then
+                values[active] = values[active]:sub(1, -2)
+                drawTargetInput(values, active)
+            elseif a == keys.enter then
+                if values[active] == "" or tonumber(values[active]) == nil then
+                    writeLine(15, "ERROR: INVALID COORDINATE")
+                    sleep(0.8)
+                    drawTargetInput(values, active)
+                elseif active < 3 then
+                    active = active + 1
+                    drawTargetInput(values, active)
+                else
+                    local x = tonumber(values[1])
+                    local y = tonumber(values[2])
+                    local z = tonumber(values[3])
+                    local ok, err = target.set(x, y, z)
+
+                    if not ok then
+                        writeLine(15, "ERROR: " .. tostring(err))
+                        sleep(1)
+                        drawTargetInput(values, active)
+                    else
+                        draw()
+                    end
+                    return
+                end
+            elseif a == keys.escape then
+                draw()
+                return
+            end
+        elseif event == "terminate" then
+            state.system.running = false
+            return
+        end
     end
-
-    write("Y: ")
-    local y = tonumber(read())
-    if not y then
-        print("Invalid Y coordinate.")
-        sleep(1)
-        return
-    end
-
-    write("Z: ")
-    local z = tonumber(read())
-    if not z then
-        print("Invalid Z coordinate.")
-        sleep(1)
-        return
-    end
-
-    local ok, err, revision = target.set(x, y, z)
-
-    print("")
-    if ok then
-        print("IMPACT POINT SET")
-        print("")
-        print("X: " .. tostring(x))
-        print("Y: " .. tostring(y))
-        print("Z: " .. tostring(z))
-        print("REVISION: " .. tostring(revision or state.target.revision))
-    else
-        print("ERROR: " .. tostring(err))
-    end
-
-    print("")
-    print("Press any key to return.")
-    os.pullEvent("key")
-    draw()
 end
 
 local function selectPage(newPage)
