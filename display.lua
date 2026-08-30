@@ -1,137 +1,135 @@
--- Missile system display
--- C toggles automatic control.
--- Q shuts down the system.
-
-local state = require("state")
-local target = require("target")
+-- Missile Control System Display
+-- ComputerCraft single-folder version
+-- No require() is used.
 
 local screen = nil
 local width = 0
 local height = 0
 local page = 1
 
-local function openScreen()
+--------------------------------------------------
+-- SCREEN
+--------------------------------------------------
 
-    screen =
-        peripheral.find("monitor")
-        or term.current()
+local function openScreen()
+    screen = peripheral.find("monitor") or term.current()
 
     if type(screen.setTextScale) == "function" then
-
-        pcall(
-            screen.setTextScale,
-            0.5
-        )
+        pcall(screen.setTextScale, 0.5)
     end
 
-    width, height =
-        screen.getSize()
+    width, height = screen.getSize()
 
-    screen.setBackgroundColor(
-        colors.black
-    )
-
-    screen.setTextColor(
-        colors.white
-    )
+    screen.setBackgroundColor(colors.black)
+    screen.setTextColor(colors.white)
 end
 
 local function clear()
-
-    screen.setBackgroundColor(
-        colors.black
-    )
-
-    screen.setTextColor(
-        colors.white
-    )
+    screen.setBackgroundColor(colors.black)
+    screen.setTextColor(colors.white)
 
     screen.clear()
-
-    screen.setCursorPos(
-        1,
-        1
-    )
+    screen.setCursorPos(1, 1)
 end
 
-local function writeLine(
-    row,
-    text
-)
-
+local function writeLine(row, text)
     if row < 1 or row > height then
         return
     end
 
-    local value =
-        tostring(
-            text or ""
-        )
+    local value = tostring(text or "")
 
     if #value > width then
-
-        value =
-            value:sub(
-                1,
-                width
-            )
+        value = value:sub(1, width)
     end
 
-    screen.setCursorPos(
-        1,
-        row
-    )
-
+    screen.setCursorPos(1, row)
     screen.clearLine()
-
-    screen.write(
-        value
-    )
+    screen.write(value)
 end
 
-local function fmt(
-    value,
-    digits
-)
-
-    value =
-        tonumber(value)
+local function fmt(value, digits)
+    value = tonumber(value)
 
     if not value then
         return "---"
     end
 
     return string.format(
-        "%." ..
-        tostring(
-            digits or 1
-        ) ..
-        "f",
+        "%." .. tostring(digits or 1) .. "f",
         value
     )
 end
 
-local function angleDeg(
-    value
-)
-
-    value =
-        tonumber(value)
+local function angleDeg(value)
+    value = tonumber(value)
 
     if not value then
         return "---"
     end
 
-    return fmt(
-        math.deg(value),
-        1
-    )
+    return fmt(math.deg(value), 1)
 end
 
-local function header(
-    title
-)
+--------------------------------------------------
+-- TARGET FILE
+--------------------------------------------------
 
+local TARGET_FILE = "target.cfg"
+
+local function saveTarget(state)
+    local file = fs.open(TARGET_FILE, "w")
+
+    if not file then
+        return false, "CANNOT OPEN TARGET FILE"
+    end
+
+    local data = {
+        x = tonumber(state.target.x) or 0,
+        y = tonumber(state.target.y) or 0,
+        z = tonumber(state.target.z) or 0,
+        set = state.target.set == true,
+        revision = tonumber(state.target.revision) or 0
+    }
+
+    file.write(textutils.serialize(data))
+    file.close()
+
+    return true
+end
+
+local function loadTarget(state)
+    if not fs.exists(TARGET_FILE) then
+        return
+    end
+
+    local file = fs.open(TARGET_FILE, "r")
+
+    if not file then
+        return
+    end
+
+    local content = file.readAll()
+    file.close()
+
+    local data = textutils.unserialize(content)
+
+    if type(data) ~= "table" then
+        return
+    end
+
+    state.target.x = tonumber(data.x) or 0
+    state.target.y = tonumber(data.y) or 0
+    state.target.z = tonumber(data.z) or 0
+    state.target.set = data.set == true
+    state.target.revision = tonumber(data.revision) or 0
+end
+
+--------------------------------------------------
+-- HEADER
+--------------------------------------------------
+
+local function header(state, title)
     writeLine(
         1,
         "=== MISSILE CONTROL SYSTEM ==="
@@ -139,10 +137,7 @@ local function header(
 
     writeLine(
         2,
-        "MODE: " ..
-        tostring(
-            state.system.mode
-        )
+        "MODE: " .. tostring(state.system.mode)
     )
 
     writeLine(
@@ -170,103 +165,75 @@ end
 -- NAVIGATION
 --------------------------------------------------
 
-local function drawNavigation()
-
+local function drawNavigation(state)
     clear()
 
-    header(
-        "NAVIGATION"
-    )
+    header(state, "NAVIGATION")
 
-    local n =
-        state.navigation
+    local n = state.navigation
 
     writeLine(
         7,
-        "STATUS: " ..
-        tostring(n.status)
+        "STATUS: " .. tostring(n.status)
     )
 
     writeLine(
         8,
-        "POS X " ..
-        fmt(n.position.x, 1) ..
-        " Y " ..
-        fmt(n.position.y, 1)
+        "POS X " .. fmt(n.position.x, 1) ..
+        " Y " .. fmt(n.position.y, 1)
     )
 
     writeLine(
         9,
-        "POS Z " ..
-        fmt(n.position.z, 1) ..
-        " GPS " ..
-        (n.gps and "ON" or "OFF")
+        "POS Z " .. fmt(n.position.z, 1) ..
+        " GPS " .. (n.gps and "ON" or "OFF")
     )
 
     writeLine(
         10,
-        "ALT " ..
-        fmt(n.altitude, 1) ..
-        " VS " ..
-        fmt(n.verticalSpeed, 1)
+        "ALT " .. fmt(n.altitude, 1) ..
+        " VS " .. fmt(n.verticalSpeed, 1)
     )
 
     writeLine(
         11,
-        "SPEED " ..
-        fmt(n.speed, 2) ..
-        " m/s PRESS " ..
-        fmt(n.airPressure, 3)
+        "SPEED " .. fmt(n.speed, 2) ..
+        " m/s PRESS " .. fmt(n.airPressure, 3)
     )
 
     writeLine(
         12,
-        "HDG " ..
-        angleDeg(n.heading) ..
-        " PITCH " ..
-        angleDeg(n.pitch) ..
-        " ROLL " ..
-        angleDeg(n.roll)
+        "HDG " .. angleDeg(n.heading) ..
+        " PITCH " .. angleDeg(n.pitch) ..
+        " ROLL " .. angleDeg(n.roll)
     )
 
     writeLine(
         13,
-        "VX " ..
-        fmt(n.velocity.x, 2) ..
-        " VY " ..
-        fmt(n.velocity.y, 2) ..
-        " VZ " ..
-        fmt(n.velocity.z, 2)
+        "VX " .. fmt(n.velocity.x, 2) ..
+        " VY " .. fmt(n.velocity.y, 2) ..
+        " VZ " .. fmt(n.velocity.z, 2)
     )
 
     writeLine(
         14,
-        "AX " ..
-        fmt(n.accelerationX, 2) ..
-        " AY " ..
-        fmt(n.accelerationY, 2) ..
-        " AZ " ..
-        fmt(n.accelerationZ, 2)
+        "AX " .. fmt(n.accelerationX, 2) ..
+        " AY " .. fmt(n.accelerationY, 2) ..
+        " AZ " .. fmt(n.accelerationZ, 2)
     )
 
     writeLine(
         15,
-        "GX " ..
-        fmt(n.gravityX, 2) ..
-        " GY " ..
-        fmt(n.gravityY, 2) ..
-        " GZ " ..
-        fmt(n.gravityZ, 2)
+        "GX " .. fmt(n.gravityX, 2) ..
+        " GY " .. fmt(n.gravityY, 2) ..
+        " GZ " .. fmt(n.gravityZ, 2)
     )
 
     writeLine(
         16,
-        "RATES X " ..
-        fmt(n.angularRateX, 2) ..
-        " Y " ..
-        fmt(n.angularRateY, 2) ..
-        " Z " ..
-        fmt(n.angularRateZ, 2)
+        "RATES X " .. fmt(n.angularRateX, 2) ..
+        " Y " .. fmt(n.angularRateY, 2) ..
+        " Z " .. fmt(n.angularRateZ, 2)
     )
 
     writeLine(
@@ -284,9 +251,9 @@ local function drawNavigation()
         " VEL: " ..
         (
             (
-                n.velocitySensorX
-                or n.velocitySensorY
-                or n.velocitySensorZ
+                n.velocitySensorX or
+                n.velocitySensorY or
+                n.velocitySensorZ
             )
             and "ON"
             or "OFF"
@@ -322,24 +289,17 @@ end
 -- GUIDANCE
 --------------------------------------------------
 
-local function drawGuidance()
-
+local function drawGuidance(state)
     clear()
 
-    header(
-        "GUIDANCE"
-    )
+    header(state, "GUIDANCE")
 
-    local g =
-        state.guidance
-
-    local n =
-        state.navigation
+    local g = state.guidance
+    local n = state.navigation
 
     writeLine(
         7,
-        "STATUS: " ..
-        tostring(g.status)
+        "STATUS: " .. tostring(g.status)
     )
 
     writeLine(
@@ -428,93 +388,64 @@ end
 -- ENGINE
 --------------------------------------------------
 
-local function drawEngine()
-
+local function drawEngine(state)
     clear()
 
-    header(
-        "VECTOR THRUSTER"
-    )
+    header(state, "VECTOR THRUSTER")
 
-    local t =
-        state.thruster
+    local t = state.thruster
 
     writeLine(
         7,
-        "STATUS: " ..
-        tostring(t.status)
+        "STATUS: " .. tostring(t.status)
     )
 
     writeLine(
         8,
         "COMMAND X: " ..
-        fmt(
-            state.guidance.commandX,
-            3
-        )
+        fmt(state.guidance.commandX, 3)
     )
 
     writeLine(
         9,
         "COMMAND Y: " ..
-        fmt(
-            state.guidance.commandY,
-            3
-        )
+        fmt(state.guidance.commandY, 3)
     )
 
     writeLine(
         11,
         "TARGET VECTOR X: " ..
-        fmt(
-            t.targetVectorX,
-            3
-        )
+        fmt(t.targetVectorX, 3)
     )
 
     writeLine(
         12,
         "TARGET VECTOR Y: " ..
-        fmt(
-            t.targetVectorY,
-            3
-        )
+        fmt(t.targetVectorY, 3)
     )
 
     writeLine(
         14,
         "ACTUAL VECTOR X: " ..
-        fmt(
-            t.vectorX,
-            3
-        )
+        fmt(t.vectorX, 3)
     )
 
     writeLine(
         15,
         "ACTUAL VECTOR Y: " ..
-        fmt(
-            t.vectorY,
-            3
-        )
+        fmt(t.vectorY, 3)
     )
 
     writeLine(
         17,
         "POWER: " ..
-        fmt(
-            t.power,
-            3
-        )
+        fmt(t.power, 3)
     )
 
     writeLine(
         18,
         "THRUST: " ..
-        fmt(
-            t.thrust,
-            3
-        )
+        fmt(t.thrust, 3)
     )
 
     writeLine(
@@ -537,20 +468,15 @@ end
 -- SYSTEM
 --------------------------------------------------
 
-local function drawSystem()
-
+local function drawSystem(state)
     clear()
 
-    header(
-        "SYSTEM"
-    )
+    header(state, "SYSTEM")
 
     writeLine(
         7,
         "SYSTEM: " ..
-        tostring(
-            state.system.status
-        )
+        tostring(state.system.status)
     )
 
     writeLine(
@@ -611,28 +537,17 @@ local function drawSystem()
     writeLine(
         15,
         "X: " ..
-        fmt(
-            state.target.x,
-            1
-        ) ..
+        fmt(state.target.x, 1) ..
         " Y: " ..
-        fmt(
-            state.target.y,
-            1
-        )
+        fmt(state.target.y, 1)
     )
 
     writeLine(
         16,
         "Z: " ..
-        fmt(
-            state.target.z,
-            1
-        ) ..
+        fmt(state.target.z, 1) ..
         " REV: " ..
-        tostring(
-            state.target.revision or 0
-        )
+        tostring(state.target.revision or 0)
     )
 
     writeLine(
@@ -708,13 +623,10 @@ local function drawSystem()
     )
 
     if state.system.error then
-
         writeLine(
             height,
             "ERROR: " ..
-            tostring(
-                state.system.error
-            )
+            tostring(state.system.error)
         )
     end
 end
@@ -723,38 +635,25 @@ end
 -- DRAW
 --------------------------------------------------
 
-local function draw()
-
-    state.display.page =
-        page
+local function draw(state)
+    state.display.page = page
 
     if page == 1 then
-
-        drawNavigation()
-
+        drawNavigation(state)
     elseif page == 2 then
-
-        drawGuidance()
-
+        drawGuidance(state)
     elseif page == 3 then
-
-        drawEngine()
-
+        drawEngine(state)
     else
-
-        drawSystem()
+        drawSystem(state)
     end
 end
 
 --------------------------------------------------
--- TARGET INPUT
+-- TARGET INPUT SCREEN
 --------------------------------------------------
 
-local function drawTargetInput(
-    values,
-    active
-)
-
+local function drawTargetInput(values, active)
     clear()
 
     writeLine(
@@ -780,9 +679,7 @@ local function drawTargetInput(
     writeLine(
         7,
         (
-            active == 1
-            and "> "
-            or "  "
+            active == 1 and "> " or "  "
         ) ..
         "X: " ..
         values[1]
@@ -791,9 +688,7 @@ local function drawTargetInput(
     writeLine(
         8,
         (
-            active == 2
-            and "> "
-            or "  "
+            active == 2 and "> " or "  "
         ) ..
         "Y: " ..
         values[2]
@@ -802,9 +697,7 @@ local function drawTargetInput(
     writeLine(
         9,
         (
-            active == 3
-            and "> "
-            or "  "
+            active == 3 and "> " or "  "
         ) ..
         "Z: " ..
         values[3]
@@ -830,8 +723,7 @@ end
 -- TARGET INPUT
 --------------------------------------------------
 
-local function setImpactPoint()
-
+local function setTarget(state)
     local values = {
         "",
         "",
@@ -840,28 +732,16 @@ local function setImpactPoint()
 
     local active = 1
 
-    drawTargetInput(
-        values,
-        active
-    )
+    drawTargetInput(values, active)
 
     while true do
-
-        local event, a =
-            os.pullEventRaw()
+        local event, a = os.pullEventRaw()
 
         if event == "char" then
-
-            if type(a) == "string"
-                and #a == 1 then
-
-                if a:match(
-                    "[%d%.-]"
-                ) then
-
+            if type(a) == "string" and #a == 1 then
+                if a:match("[%d%.-]") then
                     values[active] =
-                        values[active] ..
-                        a
+                        values[active] .. a
 
                     drawTargetInput(
                         values,
@@ -872,27 +752,19 @@ local function setImpactPoint()
 
         elseif event == "key" then
 
-            if a ==
-                keys.backspace then
-
+            if a == keys.backspace then
                 values[active] =
-                    values[active]:sub(
-                        1,
-                        -2
-                    )
+                    values[active]:sub(1, -2)
 
                 drawTargetInput(
                     values,
                     active
                 )
 
-            elseif a ==
-                keys.enter then
+            elseif a == keys.enter then
 
                 if values[active] == ""
-                    or tonumber(
-                        values[active]
-                    ) == nil then
+                    or tonumber(values[active]) == nil then
 
                     writeLine(
                         15,
@@ -908,8 +780,7 @@ local function setImpactPoint()
 
                 elseif active < 3 then
 
-                    active =
-                        active + 1
+                    active = active + 1
 
                     drawTargetInput(
                         values,
@@ -917,29 +788,25 @@ local function setImpactPoint()
                     )
 
                 else
+                    local x = tonumber(values[1])
+                    local y = tonumber(values[2])
+                    local z = tonumber(values[3])
 
-                    local x =
-                        tonumber(values[1])
+                    state.target.x = x
+                    state.target.y = y
+                    state.target.z = z
+                    state.target.set = true
 
-                    local y =
-                        tonumber(values[2])
-
-                    local z =
-                        tonumber(values[3])
+                    state.target.revision =
+                        (tonumber(state.target.revision) or 0) + 1
 
                     local ok, err =
-                        target.set(
-                            x,
-                            y,
-                            z
-                        )
+                        saveTarget(state)
 
                     if not ok then
-
                         writeLine(
                             15,
-                            "ERROR: " ..
-                            tostring(err)
+                            "ERROR: " .. tostring(err)
                         )
 
                         sleep(1)
@@ -948,29 +815,20 @@ local function setImpactPoint()
                             values,
                             active
                         )
-
                     else
-
-                        draw()
+                        draw(state)
                     end
 
                     return
                 end
 
-            elseif a ==
-                keys.r then
-
-                draw()
-
+            elseif a == keys.r then
+                draw(state)
                 return
             end
 
-        elseif event ==
-            "terminate" then
-
-            state.system.running =
-                false
-
+        elseif event == "terminate" then
+            state.system.running = false
             return
         end
     end
@@ -980,10 +838,7 @@ end
 -- PAGE SELECTION
 --------------------------------------------------
 
-local function selectPage(
-    newPage
-)
-
+local function selectPage(state, newPage)
     if newPage < 1 then
         newPage = 1
     end
@@ -992,86 +847,55 @@ local function selectPage(
         newPage = 4
     end
 
-    page =
-        newPage
+    page = newPage
 
-    draw()
+    draw(state)
 end
 
 --------------------------------------------------
 -- KEY HANDLER
 --------------------------------------------------
 
-local function handleKey(
-    key
-)
+local function handleKey(state, key)
+    if key == keys.left or key == keys.one then
 
-    if key ==
-        keys.left
-        or key == keys.one then
+        selectPage(state, 1)
 
-        selectPage(1)
+    elseif key == keys.up or key == keys.two then
 
-    elseif key ==
-        keys.up
-        or key == keys.two then
+        selectPage(state, 2)
 
-        selectPage(2)
+    elseif key == keys.right or key == keys.three then
 
-    elseif key ==
-        keys.right
-        or key == keys.three then
+        selectPage(state, 3)
 
-        selectPage(3)
+    elseif key == keys.down or key == keys.four then
 
-    elseif key ==
-        keys.down
-        or key == keys.four then
+        selectPage(state, 4)
 
-        selectPage(4)
+    elseif key == keys.i then
 
-    elseif key ==
-        keys.i then
+        setTarget(state)
 
-        setImpactPoint()
-
-    elseif key ==
-        keys.c then
-
-        --------------------------------------------------
-        -- CONTROL TOGGLE
-        --------------------------------------------------
+    elseif key == keys.c then
 
         state.system.controlEnabled =
             not state.system.controlEnabled
 
-        --------------------------------------------------
-        -- If disabling control, immediately request
-        -- neutral actuator position.
-        --------------------------------------------------
-
         if not state.system.controlEnabled then
-
-            state.guidance.commandX =
-                state.guidance.commandX or 0
-
-            state.guidance.commandY =
-                state.guidance.commandY or 0
+            state.guidance.commandX = 0
+            state.guidance.commandY = 0
         end
 
-        draw()
+        draw(state)
 
-    elseif key ==
-        keys.q then
+    elseif key == keys.q then
 
         state.system.status =
             "SHUTTING DOWN"
 
-        state.system.controlEnabled =
-            false
-
-        state.system.running =
-            false
+        state.system.controlEnabled = false
+        state.system.running = false
     end
 end
 
@@ -1079,24 +903,16 @@ end
 -- TOUCH
 --------------------------------------------------
 
-local function handleTouch(
-    x,
-    y
-)
-
+local function handleTouch(state, x, y)
     if y >= height - 2 then
 
         local slot =
             math.floor(
-                (x - 1) *
-                4 /
-                math.max(
-                    width,
-                    1
-                )
+                (x - 1) * 4 /
+                math.max(width, 1)
             ) + 1
 
-        selectPage(slot)
+        selectPage(state, slot)
     end
 end
 
@@ -1104,21 +920,21 @@ end
 -- MAIN
 --------------------------------------------------
 
-local function run()
+local function run(state)
+    if type(state) ~= "table" then
+        error("DISPLAY: STATE TABLE REQUIRED")
+    end
 
     openScreen()
 
-    target.load()
+    -- Load saved target directly into shared state.
+    loadTarget(state)
 
-    state.display.online =
-        true
+    state.display.online = true
 
-    draw()
+    draw(state)
 
-    local timer =
-        os.startTimer(
-            0.10
-        )
+    local timer = os.startTimer(0.10)
 
     while state.system.running do
 
@@ -1128,48 +944,37 @@ local function run()
         if event == "timer"
             and a == timer then
 
-            draw()
+            draw(state)
 
-            timer =
-                os.startTimer(
-                    0.10
-                )
+            timer = os.startTimer(0.10)
 
         elseif event == "key" then
 
-            handleKey(a)
+            handleKey(state, a)
 
-        elseif event ==
-            "monitor_touch" then
+        elseif event == "monitor_touch" then
 
             handleTouch(
+                state,
                 b,
                 c
             )
 
-        elseif event ==
-            "terminate" then
+        elseif event == "terminate" then
 
             state.system.status =
                 "SHUTTING DOWN"
 
-            state.system.controlEnabled =
-                false
-
-            state.system.running =
-                false
+            state.system.controlEnabled = false
+            state.system.running = false
         end
     end
 
-    --------------------------------------------------
-    -- Safety
-    --------------------------------------------------
-
-    state.system.controlEnabled =
-        false
-
-    state.display.online =
-        false
+    -- Safety shutdown.
+    state.system.controlEnabled = false
+    state.guidance.commandX = 0
+    state.guidance.commandY = 0
+    state.display.online = false
 end
 
 return {
