@@ -232,6 +232,28 @@ local function run(state)
         end
     end
 
+    local function updateLocalTarget()
+        local target = state.target
+
+        if type(target) ~= "table"
+            or target.set ~= true then
+
+            return
+        end
+
+        state.navigation.hasNavTarget = true
+
+        -- Use the manually entered target.
+        state.navigation.targetX =
+            tonumber(target.x) or 0
+
+        state.navigation.targetY =
+            tonumber(target.y) or 0
+
+        state.navigation.targetZ =
+            tonumber(target.z) or 0
+    end
+
     local function updateAltitude()
 
         if not altitudeSensor then
@@ -469,6 +491,7 @@ local function run(state)
         updateStatus()
         updateGPS()
         updateNavigationTable()
+        updateLocalTarget()
         updateAltitude()
         updateVelocity()
         updateGimbal()
