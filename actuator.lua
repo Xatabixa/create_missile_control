@@ -67,4 +67,6 @@ local function run()
     state.thruster.status = "OFFLINE"
 end
 
-return { run = run }
+return {
+    run = run
+}
