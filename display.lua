@@ -1,368 +1,139 @@
 -- Missile Control Display
 
-local state = require("state")
+local state = ...
 
-local page = 1
-local inputMode = false
+local screen = nil
+
+local width = 0
+local height = 0
+
+local refreshTimer
 
 --------------------------------------------------
--- FORMAT NUMBER
+-- SCREEN
 --------------------------------------------------
 
-local function number(value)
+local function openScreen()
 
-    if type(value) ~= "number" then
-        return "---"
+    screen =
+        peripheral.find(
+            "monitor"
+        )
+
+    if not screen then
+        screen = term.current()
     end
 
-    return string.format("%.2f", value)
+    if type(
+        screen.setTextScale
+    ) == "function" then
+
+        pcall(
+            function()
+
+                screen.setTextScale(
+                    0.5
+                )
+
+            end
+        )
+    end
+
+    width, height =
+        screen.getSize()
+
+    screen.setBackgroundColor(
+        colors.black
+    )
+
+    screen.setTextColor(
+        colors.white
+    )
 end
 
 --------------------------------------------------
--- FORMAT ANGLE
+-- CLEAR
 --------------------------------------------------
 
-local function angle(value)
+local function clear()
 
-    if type(value) ~= "number" then
+    screen.setBackgroundColor(
+        colors.black
+    )
+
+    screen.clear()
+
+    screen.setCursorPos(
+        1,
+        1
+    )
+end
+
+--------------------------------------------------
+-- TEXT
+--------------------------------------------------
+
+local function line(
+    row,
+    text
+)
+
+    if row < 1
+        or row > height then
+
+        return
+    end
+
+    local output =
+        tostring(
+            text or ""
+        )
+
+    if #output > width then
+
+        output =
+            output:sub(
+                1,
+                width
+            )
+    end
+
+    screen.setCursorPos(
+        1,
+        row
+    )
+
+    screen.clearLine()
+
+    screen.write(
+        output
+    )
+end
+
+--------------------------------------------------
+-- NUMBER
+--------------------------------------------------
+
+local function fmt(
+    value,
+    digits
+)
+
+    value =
+        tonumber(value)
+
+    if not value then
         return "---"
     end
 
     return string.format(
-        "%.2f°",
-        math.deg(value)
+        "%." ..
+        tostring(
+            digits or 1
+        ) ..
+        "f",
+        value
     )
-end
-
---------------------------------------------------
--- HEADER
---------------------------------------------------
-
-local function header(title)
-
-    term.clear()
-    term.setCursorPos(1, 1)
-
-    print("MISSILE CONTROL")
-    print(title)
-    print("----------------")
-
-end
-
---------------------------------------------------
--- NAVIGATION PAGE
---------------------------------------------------
-
-local function navigationPage()
-
-    header("NAVIGATION")
-
-    local n =
-        state.navigation
-
-    print(
-        "STATUS: " ..
-        n.status
-    )
-
-    print("")
-
-    print(
-        "BEARING   " ..
-        angle(n.bearing)
-    )
-
-    print(
-        "HEADING   " ..
-        angle(n.heading)
-    )
-
-    print(
-        "RELATIVE  " ..
-        angle(n.relativeAngle)
-    )
-
-    print(
-        "VERTICAL  " ..
-        number(n.verticalOffset)
-    )
-
-    print(
-        "DISTANCE  " ..
-        number(n.distance)
-    )
-
-    print(
-        "CLOSURE   " ..
-        number(n.closureRate)
-    )
-
-    print("")
-
-    print(
-        "UPDATES   " ..
-        tostring(n.updateCount)
-    )
-
-end
-
---------------------------------------------------
--- GUIDANCE PAGE
---------------------------------------------------
-
-local function guidancePage()
-
-    header("GUIDANCE")
-
-    local g =
-        state.guidance
-
-    print(
-        "STATUS: " ..
-        g.status
-    )
-
-    print("")
-
-    print("COMMAND VECTOR")
-
-    print(
-        "X   " ..
-        number(g.commandX)
-    )
-
-    print(
-        "Y   " ..
-        number(g.commandY)
-    )
-
-    print("")
-
-    print(
-        "UPDATES   " ..
-        tostring(g.updateCount)
-    )
-
-end
-
---------------------------------------------------
--- THRUSTER PAGE
---------------------------------------------------
-
-local function thrusterPage()
-
-    header("THRUSTER")
-
-    local t =
-        state.thruster
-
-    print(
-        "STATUS: " ..
-        t.status
-    )
-
-    print("")
-
-    print(
-        "POWER     " ..
-        number(t.power)
-    )
-
-    print(
-        "THRUST    " ..
-        number(t.thrust)
-    )
-
-    print("")
-
-    print("ACTUAL VECTOR")
-
-    print(
-        "X   " ..
-        number(t.vectorX)
-    )
-
-    print(
-        "Y   " ..
-        number(t.vectorY)
-    )
-
-    print("")
-
-    print("TARGET VECTOR")
-
-    print(
-        "X   " ..
-        number(t.targetVectorX)
-    )
-
-    print(
-        "Y   " ..
-        number(t.targetVectorY)
-    )
-
-end
-
---------------------------------------------------
--- SYSTEM PAGE
---------------------------------------------------
-
-local function systemPage()
-
-    header("SYSTEM")
-
-    print(
-        "MODE: " ..
-        state.system.mode
-    )
-
-    print(
-        "STATUS: " ..
-        state.system.status
-    )
-
-    print("")
-
-    print("SUBSYSTEMS")
-
-    print(
-        "NAVIGATION  " ..
-        state.navigation.status
-    )
-
-    print(
-        "GUIDANCE    " ..
-        state.guidance.status
-    )
-
-    print(
-        "THRUSTER    " ..
-        state.thruster.status
-    )
-
-    print("")
-
-    print("IMPACT POINT")
-
-    if state.impactPoint.set then
-
-        print(
-            "X " ..
-            number(state.impactPoint.x)
-        )
-
-        print(
-            "Y " ..
-            number(state.impactPoint.y)
-        )
-
-        print(
-            "Z " ..
-            number(state.impactPoint.z)
-        )
-
-    else
-
-        print("NOT SET")
-
-    end
-
-    print("")
-    print("I - SET IMPACT POINT")
-    print("Q - SHUTDOWN")
-
-end
-
---------------------------------------------------
--- INPUT COORDINATE
---------------------------------------------------
-
-local function inputCoordinate(axis)
-
-    term.clear()
-    term.setCursorPos(1, 1)
-
-    print("SET IMPACT POINT")
-    print("----------------")
-    print("")
-    print(
-        "Enter " ..
-        axis ..
-        " coordinate:"
-    )
-    print("")
-
-    write("> ")
-
-    local value =
-        tonumber(read())
-
-    if value == nil then
-
-        print("")
-        print("INVALID VALUE")
-
-        sleep(1)
-
-        return nil
-    end
-
-    return value
-end
-
---------------------------------------------------
--- SET IMPACT POINT
---------------------------------------------------
-
-local function setImpactPoint()
-
-    inputMode = true
-
-    local x =
-        inputCoordinate("X")
-
-    if x == nil then
-        inputMode = false
-        return
-    end
-
-    local y =
-        inputCoordinate("Y")
-
-    if y == nil then
-        inputMode = false
-        return
-    end
-
-    local z =
-        inputCoordinate("Z")
-
-    if z == nil then
-        inputMode = false
-        return
-    end
-
-    state.impactPoint.x = x
-    state.impactPoint.y = y
-    state.impactPoint.z = z
-
-    state.impactPoint.set = true
-
-    term.clear()
-    term.setCursorPos(1, 1)
-
-    print("IMPACT POINT")
-    print("----------------")
-    print("")
-    print("POINT SAVED")
-    print("")
-    print("X " .. number(x))
-    print("Y " .. number(y))
-    print("Z " .. number(z))
-
-    sleep(1)
-
-    inputMode = false
 end
 
 --------------------------------------------------
@@ -371,100 +142,385 @@ end
 
 local function draw()
 
-    if inputMode then
-        return
+    clear()
+
+    line(
+        1,
+        "MISSILE CONTROL"
+    )
+
+    line(
+        2,
+        "=============================="
+    )
+
+    line(
+        3,
+        "SYSTEM: " ..
+        tostring(
+            state.system.status
+        )
+    )
+
+    line(
+        4,
+        "MODE:   " ..
+        tostring(
+            state.system.mode
+        )
+    )
+
+    line(
+        5,
+        "CONTROL: " ..
+        (
+            state.system.controlEnabled
+            and "ON"
+            or "OFF"
+        )
+    )
+
+    --------------------------------------------------
+    -- NAVIGATION
+    --------------------------------------------------
+
+    line(
+        6,
+        ""
+    )
+
+    line(
+        7,
+        "NAVIGATION: " ..
+        tostring(
+            state.navigation.status
+        )
+    )
+
+    line(
+        8,
+        "POS X: " ..
+        fmt(
+            state.navigation.x,
+            1
+        )
+    )
+
+    line(
+        9,
+        "POS Y: " ..
+        fmt(
+            state.navigation.y,
+            1
+        )
+    )
+
+    line(
+        10,
+        "POS Z: " ..
+        fmt(
+            state.navigation.z,
+            1
+        )
+    )
+
+    line(
+        11,
+        "ALT: " ..
+        fmt(
+            state.navigation.altitude,
+            1
+        )
+        ..
+        "  V: "
+        ..
+        fmt(
+            state.navigation.verticalSpeed,
+            1
+        )
+    )
+
+    line(
+        12,
+        "SPEED: " ..
+        fmt(
+            state.navigation.speed,
+            1
+        )
+        ..
+        "  HDG: "
+        ..
+        fmt(
+            math.deg(
+                state.navigation.heading
+            ),
+            1
+        )
+    )
+
+    --------------------------------------------------
+    -- TARGET
+    --------------------------------------------------
+
+    line(
+        13,
+        ""
+    )
+
+    line(
+        14,
+        "TARGET: " ..
+        (
+            state.target.set
+            and "SET"
+            or "NOT SET"
+        )
+    )
+
+    line(
+        15,
+        "X: " ..
+        fmt(
+            state.target.x,
+            1
+        )
+        ..
+        "  Y: "
+        ..
+        fmt(
+            state.target.y,
+            1
+        )
+    )
+
+    line(
+        16,
+        "Z: " ..
+        fmt(
+            state.target.z,
+            1
+        )
+    )
+
+    line(
+        17,
+        "DIST: " ..
+        fmt(
+            state.navigation.distance,
+            1
+        )
+    )
+
+    --------------------------------------------------
+    -- GUIDANCE
+    --------------------------------------------------
+
+    line(
+        18,
+        "GUIDANCE: " ..
+        tostring(
+            state.guidance.status
+        )
+    )
+
+    line(
+        19,
+        "YAW: " ..
+        fmt(
+            math.deg(
+                state.guidance.yawError
+            ),
+            1
+        )
+        ..
+        "  PITCH: "
+        ..
+        fmt(
+            math.deg(
+                state.guidance.pitchError
+            ),
+            1
+        )
+    )
+
+    line(
+        20,
+        "CMD X: " ..
+        fmt(
+            state.guidance.commandX,
+            2
+        )
+        ..
+        "  Y: "
+        ..
+        fmt(
+            state.guidance.commandY,
+            2
+        )
+    )
+
+    --------------------------------------------------
+    -- ACTUATOR
+    --------------------------------------------------
+
+    line(
+        21,
+        "ACTUATOR: " ..
+        tostring(
+            state.actuator.status
+        )
+    )
+
+    line(
+        22,
+        "VECTOR X: " ..
+        fmt(
+            state.actuator.vectorX,
+            2
+        )
+        ..
+        " Y: "
+        ..
+        fmt(
+            state.actuator.vectorY,
+            2
+        )
+    )
+
+    line(
+        23,
+        "THRUST: " ..
+        fmt(
+            state.actuator.thrust,
+            2
+        )
+        ..
+        " POWER: "
+        ..
+        fmt(
+            state.actuator.power,
+            2
+        )
+    )
+
+    --------------------------------------------------
+    -- SHUTDOWN
+    --------------------------------------------------
+
+    line(
+        24,
+        "Q = SHUTDOWN"
+    )
+
+    --------------------------------------------------
+    -- ERROR
+    --------------------------------------------------
+
+    if state.system.error then
+
+        line(
+            height,
+            "ERROR: " ..
+            tostring(
+                state.system.error
+            )
+        )
     end
+end
 
-    if page == 1 then
+--------------------------------------------------
+-- INIT
+--------------------------------------------------
 
-        navigationPage()
+function init()
 
-    elseif page == 2 then
+    openScreen()
 
-        guidancePage()
-
-    elseif page == 3 then
-
-        thrusterPage()
-
-    elseif page == 4 then
-
-        systemPage()
-
-    end
+    draw()
 
 end
 
 --------------------------------------------------
--- DISPLAY LOOP
+-- RUN
 --------------------------------------------------
 
-local function displayLoop()
+function run()
+
+    openScreen()
+
+    refreshTimer =
+        os.startTimer(
+            0.10
+        )
 
     while state.system.running do
 
-        draw()
+        local event, a, b, c =
+            os.pullEventRaw()
 
-        sleep(0.1)
+        --------------------------------------------------
+        -- REFRESH
+        --------------------------------------------------
 
-    end
+        if event == "timer"
+            and a == refreshTimer then
 
-end
+            draw()
 
---------------------------------------------------
--- INPUT LOOP
---------------------------------------------------
-
-local function inputLoop()
-
-    while state.system.running do
-
-        local _, key =
-            os.pullEvent("key")
-
-        if not inputMode then
-
-            if key == keys.up then
-
-                page = 1
-
-            elseif key == keys.left then
-
-                page = 2
-
-            elseif key == keys.right then
-
-                page = 3
-
-            elseif key == keys.down then
-
-                page = 4
-
-            elseif key == keys.i then
-
-                setImpactPoint()
-
-            elseif key == keys.q then
-
-                state.system.running = false
-
-                return
-
-            end
-
+            refreshTimer =
+                os.startTimer(
+                    0.10
+                )
         end
 
+        --------------------------------------------------
+        -- KEYBOARD SHUTDOWN
+        --------------------------------------------------
+
+        if event == "key" then
+
+            if a == keys.q then
+
+                state.system.status =
+                    "SHUTTING DOWN"
+
+                state.system.running =
+                    false
+
+                break
+            end
+        end
+
+        --------------------------------------------------
+        -- MONITOR TOUCH
+        --------------------------------------------------
+
+        if event == "monitor_touch" then
+
+            if c >= height - 1 then
+
+                state.system.status =
+                    "SHUTTING DOWN"
+
+                state.system.running =
+                    false
+
+                break
+            end
+        end
+
+        --------------------------------------------------
+        -- TERMINATE
+        --------------------------------------------------
+
+        if event == "terminate" then
+
+            state.system.running =
+                false
+
+            break
+        end
     end
 
+    draw()
 end
-
---------------------------------------------------
--- START
---------------------------------------------------
-
-state.system.status = "ONLINE"
-
-parallel.waitForAny(
-    displayLoop,
-    inputLoop
-)

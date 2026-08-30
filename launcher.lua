@@ -1,106 +1,225 @@
--- Missile Control System Launcher
--- Simple CC:Tweaked launcher.
--- All modules are executed as normal ComputerCraft programs.
+-- Missile Control Master Launcher
+--
+-- This program owns the shared state and starts all subsystems
+-- concurrently.
+--
+-- Shutdown of state.system.running causes every subsystem to stop.
+
+local STATE_FILE = "state.lua"
+local TARGET_FILE = "target.cfg"
 
 --------------------------------------------------
--- CONFIGURATION
+-- LOAD SHARED STATE
 --------------------------------------------------
 
-local ROOT = "/rocket"
+local state = dofile(STATE_FILE)
 
-local modules = {
-    "navigation.lua",
-    "guidance.lua",
-    "actuator.lua",
-    "display.lua"
-}
+_G.MISSILE_STATE = state
 
 --------------------------------------------------
--- PREPARE ENVIRONMENT
+-- LOAD TARGET
 --------------------------------------------------
 
--- Make /rocket the working directory.
-shell.setDir(ROOT)
+local function loadTarget()
 
---------------------------------------------------
--- CHECK FILES
---------------------------------------------------
-
-for _, file in ipairs(modules) do
-
-    local path =
-        ROOT .. "/" .. file
-
-    if not fs.exists(path) then
-
-        term.clear()
-        term.setCursorPos(1, 1)
-
-        print("MISSILE CONTROL")
-        print("================")
-        print("")
-        print("FILE NOT FOUND:")
-        print(path)
-        print("")
-        print("Press any key...")
-
-        os.pullEvent("key")
-
+    if not fs.exists(TARGET_FILE) then
+        state.target.set = false
         return
+    end
+
+    local file = fs.open(TARGET_FILE, "r")
+
+    if not file then
+        state.target.set = false
+        return
+    end
+
+    local text = file.readAll()
+    file.close()
+
+    local data = textutils.unserialize(text)
+
+    if type(data) ~= "table" then
+        state.target.set = false
+        return
+    end
+
+    local x = tonumber(data.x)
+    local y = tonumber(data.y)
+    local z = tonumber(data.z)
+
+    if x and y and z then
+
+        state.target.x = x
+        state.target.y = y
+        state.target.z = z
+
+        state.target.set = data.set ~= false
+
+        state.target.revision =
+            tonumber(data.revision) or 0
+
+    else
+        state.target.set = false
+    end
+end
+
+loadTarget()
+
+--------------------------------------------------
+-- MODULE LOADER
+--------------------------------------------------
+
+local function loadModule(filename)
+
+    local chunk, err = loadfile(filename)
+
+    if not chunk then
+        error(
+            "LOAD ERROR [" ..
+            filename ..
+            "]: " ..
+            tostring(err)
+        )
+    end
+
+    local ok, module = pcall(chunk, state)
+
+    if not ok then
+        error(
+            "INIT ERROR [" ..
+            filename ..
+            "]: " ..
+            tostring(module)
+        )
+    end
+
+    if type(module) ~= "table" then
+        error(
+            "MODULE [" ..
+            filename ..
+            "] DID NOT RETURN A TABLE"
+        )
+    end
+
+    if type(module.init) == "function" then
+
+        local initOK, initError =
+            pcall(module.init)
+
+        if not initOK then
+
+            error(
+                "MODULE INIT ERROR [" ..
+                filename ..
+                "]: " ..
+                tostring(initError)
+            )
+
+        end
+    end
+
+    return module
+end
+
+--------------------------------------------------
+-- LOAD ALL SYSTEMS
+--------------------------------------------------
+
+local navigation =
+    loadModule("navigation.lua")
+
+local guidance =
+    loadModule("guidance.lua")
+
+local actuator =
+    loadModule("actuator.lua")
+
+local display =
+    loadModule("display.lua")
+
+--------------------------------------------------
+-- SYSTEM STATE
+--------------------------------------------------
+
+state.system.running = true
+state.system.status = "ONLINE"
+state.system.mode = "STANDBY"
+
+--------------------------------------------------
+-- SAFE MODULE RUNNER
+--------------------------------------------------
+
+local function runModule(name, module)
+
+    local ok, err =
+        pcall(module.run)
+
+    if not ok then
+
+        state.system.error =
+            name .. ": " .. tostring(err)
+
+        state.system.status = "ERROR"
+
+        state.system.running = false
     end
 end
 
 --------------------------------------------------
--- START SYSTEM
---------------------------------------------------
-
-term.clear()
-term.setCursorPos(1, 1)
-
-print("MISSILE CONTROL")
-print("================")
-print("")
-print("Starting systems...")
-print("")
-
-sleep(0.5)
-
---------------------------------------------------
--- RUN MODULES
+-- RUN ALL SYSTEMS SIMULTANEOUSLY
 --------------------------------------------------
 
 parallel.waitForAll(
 
     function()
-        shell.run(ROOT .. "/navigation.lua")
+        runModule(
+            "NAVIGATION",
+            navigation
+        )
     end,
 
     function()
-        shell.run(ROOT .. "/guidance.lua")
+        runModule(
+            "GUIDANCE",
+            guidance
+        )
     end,
 
     function()
-        shell.run(ROOT .. "/actuator.lua")
+        runModule(
+            "ACTUATOR",
+            actuator
+        )
     end,
 
     function()
-        shell.run(ROOT .. "/display.lua")
+        runModule(
+            "DISPLAY",
+            display
+        )
     end
-
 )
 
 --------------------------------------------------
--- SHUTDOWN
+-- GLOBAL SHUTDOWN
 --------------------------------------------------
 
-term.clear()
-term.setCursorPos(1, 1)
+state.system.running = false
 
-print("MISSILE CONTROL")
-print("================")
-print("")
-print("SYSTEM STOPPED")
-print("")
-print("Press any key...")
+state.system.status =
+    state.system.status == "ERROR"
+    and "ERROR"
+    or "OFFLINE"
 
-os.pullEvent("key")
+--------------------------------------------------
+-- HARD ACTUATOR SHUTDOWN
+--------------------------------------------------
+
+if type(actuator.shutdown) == "function" then
+
+    pcall(
+        actuator.shutdown
+    )
+
+end
