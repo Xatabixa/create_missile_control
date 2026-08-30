@@ -1,68 +1,113 @@
 -- Missile Control System Launcher
+-- All modules run inside the same Lua environment
+-- so they share the same state table.
+
+--------------------------------------------------
+-- LOAD SHARED STATE
+--------------------------------------------------
 
 local state = require("state")
-
---------------------------------------------------
--- INITIALIZATION
---------------------------------------------------
-
-term.clear()
-term.setCursorPos(1, 1)
-
-print("MISSILE CONTROL SYSTEM")
-print("======================")
-print("")
 
 state.system.running = true
 state.system.mode = "DRY TEST"
 state.system.status = "STARTING"
 
-print("Starting systems...")
-print("")
+--------------------------------------------------
+-- LOAD MODULE
+--------------------------------------------------
+
+local function loadModule(filename)
+
+    local chunk, errorMessage =
+        loadfile(filename)
+
+    if not chunk then
+
+        error(
+            "Failed to load " ..
+            filename ..
+            ": " ..
+            tostring(errorMessage)
+        )
+
+    end
+
+    return chunk
+end
+
+--------------------------------------------------
+-- LOAD ALL MODULES
+--------------------------------------------------
+
+local navigation =
+    loadModule("navigation.lua")
+
+local guidance =
+    loadModule("guidance.lua")
+
+local actuator =
+    loadModule("actuator.lua")
+
+local display =
+    loadModule("display.lua")
 
 --------------------------------------------------
 -- RUN MODULE
 --------------------------------------------------
 
-local function runModule(name)
+local function runModule(name, module)
 
-    local ok, err =
-        pcall(function()
-            shell.run(name)
-        end)
+    local ok, errorMessage =
+        pcall(module)
 
     if not ok then
 
         print("")
-        print("MODULE ERROR: " .. name)
-        print(tostring(err))
+        print("MODULE ERROR")
+        print(name)
+        print("")
+        print(tostring(errorMessage))
 
         state.system.status = "ERROR"
 
-        sleep(3)
+        state.system.running = false
+
     end
+
 end
 
 --------------------------------------------------
--- START
+-- START SYSTEM
 --------------------------------------------------
 
-parallel.waitForAll(
+parallel.waitForAny(
 
     function()
-        runModule("navigation.lua")
+        runModule(
+            "NAVIGATION",
+            navigation
+        )
     end,
 
     function()
-        runModule("guidance.lua")
+        runModule(
+            "GUIDANCE",
+            guidance
+        )
     end,
 
     function()
-        runModule("actuator.lua")
+        runModule(
+            "ACTUATOR",
+            actuator
+        )
     end,
 
     function()
-        runModule("display.lua")
+        runModule(
+            "DISPLAY",
+            display
+        )
     end
 
 )
