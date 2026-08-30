@@ -1,6 +1,6 @@
 -- Missile Control Display
 
-local state = ...
+local state = require("state")
 
 local screen = nil
 
