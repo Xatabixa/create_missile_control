@@ -524,3 +524,8 @@ function run()
 
     draw()
 end
+
+return {
+    init = init,
+    run = run
+}

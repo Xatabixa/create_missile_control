@@ -594,3 +594,8 @@ function run()
     state.navigation.online = false
     state.navigation.status = "OFFLINE"
 end
+
+return {
+    init = init,
+    run = run
+}

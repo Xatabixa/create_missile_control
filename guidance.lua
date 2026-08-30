@@ -213,3 +213,8 @@ function run()
     state.guidance.status =
         "OFFLINE"
 end
+
+return {
+    init = init,
+    run = run
+}

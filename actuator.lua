@@ -453,3 +453,9 @@ function shutdown()
     state.actuator.status =
         "OFFLINE"
 end
+
+return {
+    init = init,
+    run = run,
+    shutdown = shutdown
+}
