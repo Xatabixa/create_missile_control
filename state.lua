@@ -1,4 +1,5 @@
 -- Shared missile control state
+-- No require() is used.
 
 local state = {
     system = {
@@ -17,15 +18,32 @@ local state = {
         revision = 0
     },
 
+    startPosition = {
+        x = 0,
+        y = 0,
+        z = 0,
+        set = false
+    },
+
     navigation = {
         online = false,
         status = "OFFLINE",
 
-        position = { x = 0, y = 0, z = 0 },
+        position = {
+            x = 0,
+            y = 0,
+            z = 0
+        },
+
         positionValid = false,
         gps = false,
 
-        velocity = { x = 0, y = 0, z = 0 },
+        velocity = {
+            x = 0,
+            y = 0,
+            z = 0
+        },
+
         speed = 0,
 
         altitude = 0,
