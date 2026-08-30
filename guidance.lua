@@ -1,6 +1,8 @@
 -- Guidance system
 -- Compatible with the current single-folder setup
 
+local state = require("state")
+
 local MAX_VECTOR = 0.25
 local BEARING_GAIN = 1.0
 local ELEVATION_GAIN = 0.05
@@ -8,9 +10,6 @@ local DEADZONE = math.rad(0.5)
 
 -- Shared state must already exist.
 -- If it does not, guidance remains offline instead of crashing.
-if state == nil then
-    return
-end
 
 state.guidance = state.guidance or {
     online = false,
