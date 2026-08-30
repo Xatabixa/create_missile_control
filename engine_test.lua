@@ -1,8 +1,8 @@
--- Exact vector thruster test
--- Run this instead of launcher.lua
+-- Engine and vector thruster test
+-- This script directly controls the liquid vector thruster.
+-- Run it instead of launcher.lua.
 
-local thruster = peripheral.find("vector_thruster")
-    or peripheral.find("liquid_vector_thruster")
+local thruster = peripheral.find("liquid_vector_thruster")
 
 if not thruster then
     term.clear()
@@ -10,31 +10,38 @@ if not thruster then
 
     print("ENGINE TEST")
     print("")
-    print("ERROR: vector thruster not found")
+    print("ERROR: liquid_vector_thruster not found")
     return
 end
 
 local x = 0
 local y = 0
+local throttle = 0
 
-local function clamp(value)
-    return math.max(-1, math.min(1, value))
+local function clamp(value, min, max)
+    return math.max(min, math.min(max, value))
 end
 
-local function setVector()
-    x = clamp(x)
-    y = clamp(y)
+local function apply()
+    x = clamp(x, -1, 1)
+    y = clamp(y, -1, 1)
+    throttle = clamp(throttle, 0, 1)
 
-    local ok, err = pcall(thruster.setVector, x, y)
+    local ok, err = pcall(function()
+        thruster.setVector(x, y)
+        thruster.setThrustNormalized(throttle)
+    end)
 
     if not ok then
-        return false, tostring(err)
+        term.setCursorPos(1, 20)
+        print("ERROR: " .. tostring(err))
+        return false
     end
 
     return true
 end
 
-local function getValue(method)
+local function get(method)
     local ok, value = pcall(method)
 
     if ok and value ~= nil then
@@ -44,118 +51,145 @@ local function getValue(method)
     return nil
 end
 
+local function fmt(value)
+    if value == nil then
+        return "N/A"
+    end
+
+    return string.format("% .3f", value)
+end
+
 local function draw()
     term.clear()
     term.setCursorPos(1, 1)
 
     print("================================")
-    print("       ENGINE VECTOR TEST")
+    print("        ENGINE TEST")
     print("================================")
     print("")
 
-    print("COMMAND VECTOR")
-    print("X: " .. string.format("% .3f", x))
-    print("Y: " .. string.format("% .3f", y))
+    print("COMMAND")
+    print("Vector X : " .. fmt(x))
+    print("Vector Y : " .. fmt(y))
+    print("Throttle : " .. fmt(throttle))
     print("")
 
-    local actualX = getValue(thruster.getVectorX)
-    local actualY = getValue(thruster.getVectorY)
+    local actualX = get(thruster.getVectorX)
+    local actualY = get(thruster.getVectorY)
 
-    local targetX = getValue(thruster.getTargetVectorX)
-    local targetY = getValue(thruster.getTargetVectorY)
+    local targetX = get(thruster.getTargetVectorX)
+    local targetY = get(thruster.getTargetVectorY)
+
+    local power = get(thruster.getPower)
+    local thrust = get(thruster.getThrust)
 
     print("ACTUAL VECTOR")
-    print("X: " .. (actualX and string.format("% .3f", actualX) or "N/A"))
-    print("Y: " .. (actualY and string.format("% .3f", actualY) or "N/A"))
+    print("X: " .. fmt(actualX))
+    print("Y: " .. fmt(actualY))
     print("")
 
     print("TARGET VECTOR")
-    print("X: " .. (targetX and string.format("% .3f", targetX) or "N/A"))
-    print("Y: " .. (targetY and string.format("% .3f", targetY) or "N/A"))
+    print("X: " .. fmt(targetX))
+    print("Y: " .. fmt(targetY))
     print("")
-
-    local power = getValue(thruster.getPower)
-    local thrust = getValue(thruster.getThrust)
 
     print("ENGINE")
-    print("Power : " .. (power and string.format("%.3f", power) or "N/A"))
-    print("Thrust: " .. (thrust and string.format("%.3f", thrust) or "N/A"))
+    print("Power : " .. fmt(power))
+    print("Thrust: " .. fmt(thrust))
+    print("")
 
-    print("")
     print("--------------------------------")
-    print("ENTER X/Y VECTOR")
-    print("Example: 0.25 -0.10")
-    print("")
-    print("R = reset to 0,0")
-    print("Q = quit")
+    print("ENTER  Set vector + throttle")
+    print("R      Reset")
+    print("Q      Quit")
     print("--------------------------------")
 end
 
-local function readVector()
-    term.setCursorPos(1, 15)
+local function input()
+    term.setCursorPos(1, 17)
     term.clearLine()
-    term.write("X Y > ")
+    term.write("X Y THROTTLE > ")
 
-    local input = read()
+    local text = read()
 
-    local inputX, inputY = input:match(
-        "^%s*([%+%-]?[%d%.]+)%s+([%+%-]?[%d%.]+)%s*$"
+    local sx, sy, st = text:match(
+        "^%s*([%+%-]?[%d%.]+)%s+([%+%-]?[%d%.]+)%s+([%+%-]?[%d%.]+)%s*$"
     )
 
-    if not inputX or not inputY then
-        return false, "Invalid format"
+    if not sx or not sy or not st then
+        return false, "Format: X Y THROTTLE"
     end
 
-    local newX = tonumber(inputX)
-    local newY = tonumber(inputY)
+    local nx = tonumber(sx)
+    local ny = tonumber(sy)
+    local nt = tonumber(st)
 
-    if not newX or not newY then
+    if not nx or not ny or not nt then
         return false, "Invalid number"
     end
 
-    if newX < -1 or newX > 1 or newY < -1 or newY > 1 then
-        return false, "Values must be between -1 and 1"
+    if nx < -1 or nx > 1 then
+        return false, "X must be between -1 and 1"
     end
 
-    x = newX
-    y = newY
+    if ny < -1 or ny > 1 then
+        return false, "Y must be between -1 and 1"
+    end
 
-    return setVector()
+    if nt < 0 or nt > 1 then
+        return false, "Throttle must be between 0 and 1"
+    end
+
+    x = nx
+    y = ny
+    throttle = nt
+
+    return apply()
 end
 
--- Initial neutral position
-setVector()
+-- SAFETY: start with engine OFF and vector neutral.
+x = 0
+y = 0
+throttle = 0
+
+apply()
+draw()
 
 while true do
-    draw()
-
     local event, key = os.pullEvent("key")
 
     if key == keys.q then
         break
+
     elseif key == keys.r then
         x = 0
         y = 0
-        setVector()
+        throttle = 0
+        apply()
+
     elseif key == keys.enter then
-        local ok, err = readVector()
+        local ok, err = input()
 
         if not ok then
-            term.setCursorPos(1, 17)
-            print("ERROR: " .. err)
+            term.setCursorPos(1, 18)
+            print("ERROR: " .. tostring(err))
             sleep(1)
         end
     end
+
+    draw()
 end
 
--- Always return the engine vector to neutral
-pcall(thruster.setVector, 0, 0)
+-- SAFETY SHUTDOWN
+pcall(function()
+    thruster.setThrustNormalized(0)
+    thruster.setVector(0, 0)
+end)
 
 term.clear()
 term.setCursorPos(1, 1)
 
-print("ENGINE VECTOR TEST")
+print("ENGINE TEST STOPPED")
 print("")
-print("Vector returned to:")
-print("X: 0.000")
-print("Y: 0.000")
+print("Throttle: 0.000")
+print("Vector:   0.000, 0.000")
