@@ -1,93 +1,97 @@
--- Shared missile control state.
--- This file is loaded once by launcher.lua.
--- Do not use require() in ComputerCraft.
+-- Shared missile control state
 
 local state = {
+
     system = {
         running = true,
-        status = "STARTING",
-        mode = "STANDBY",
-        controlEnabled = false,
-        error = nil,
-        tick = 0
+        mode = "DRY TEST"
     },
 
     target = {
         x = 0,
         y = 0,
         z = 0,
-        set = false,
-        revision = 0
+        set = false
     },
 
     navigation = {
+
         online = false,
-        status = "OFFLINE",
 
-        gps = false,
-        navTable = false,
-        gimbal = false,
+        position = {
+            x = 0,
+            y = 0,
+            z = 0
+        },
 
-        x = 0,
-        y = 0,
-        z = 0,
+        positionValid = false,
 
-        vx = 0,
-        vy = 0,
-        vz = 0,
+        velocity = {
+            x = 0,
+            y = 0,
+            z = 0
+        },
 
-        speed = 0,
         altitude = 0,
         verticalSpeed = 0,
+        airPressure = 0,
 
-        heading = 0,
         pitch = 0,
         roll = 0,
+        heading = 0,
 
-        distance = 0,
-        groundDistance = 0,
-        verticalOffset = 0,
+        angularRateX = 0,
+        angularRateY = 0,
+        angularRateZ = 0,
+
+        accelerationX = 0,
+        accelerationY = 0,
+        accelerationZ = 0,
+
+        gravityX = 0,
+        gravityY = 0,
+        gravityZ = 0,
+
         bearing = 0,
+        relativeAngle = 0,
+        elevation = 0,
+        distance = 0,
+        closureRate = 0,
 
-        bodyX = 0,
-        bodyY = 0,
-        bodyZ = 0,
+        hasNavTarget = false,
 
-        lastUpdate = 0,
-        updateCount = 0
+        altitudeSensor = false,
+        gimbalSensor = false,
+        navigationTable = false,
+        gps = false
     },
 
     guidance = {
-        online = false,
-        status = "OFFLINE",
 
-        yawError = 0,
-        pitchError = 0,
+        online = false,
 
         commandX = 0,
         commandY = 0,
 
-        lastUpdate = 0,
-        updateCount = 0
+        active = false
     },
 
-    actuator = {
-        online = false,
-        status = "OFFLINE",
+    thruster = {
 
-        type = "NONE",
+        online = false,
+
+        power = 0,
+        thrust = 0,
 
         vectorX = 0,
         vectorY = 0,
 
-        commandX = 0,
-        commandY = 0,
+        targetVectorX = 0,
+        targetVectorY = 0
+    },
 
-        thrust = 0,
-        power = 0,
-
-        lastUpdate = 0,
-        updateCount = 0
+    display = {
+        online = false
     }
 }
 

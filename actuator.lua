@@ -1,461 +1,142 @@
--- Actuator subsystem.
---
--- This is the only subsystem allowed to write vector commands
--- to the propulsion peripheral.
---
--- Shutdown ALWAYS resets the vector to zero.
+-- Vector thruster actuator
 
-local state = ...
-
-local thruster = nil
-local thrusterType = "NONE"
+local state = require("state")
 
 --------------------------------------------------
 -- FIND THRUSTER
 --------------------------------------------------
 
-local function findThruster()
-
-    local peripheralObject
-
-    peripheralObject =
-        peripheral.find(
-            "liquid_vector_thruster"
-        )
-
-    if peripheralObject then
-
-        return peripheralObject,
-            "LIQUID_VECTOR"
-
-    end
-
-    peripheralObject =
-        peripheral.find(
-            "vector_thruster"
-        )
-
-    if peripheralObject then
-
-        return peripheralObject,
-            "VECTOR"
-
-    end
-
-    peripheralObject =
-        peripheral.find(
-            "creative_vector_thruster"
-        )
-
-    if peripheralObject then
-
-        return peripheralObject,
-            "CREATIVE_VECTOR"
-
-    end
-
-    return nil, "NONE"
-end
+local thruster =
+    peripheral.find("vector_thruster")
 
 --------------------------------------------------
--- VECTOR
+-- OFFLINE
 --------------------------------------------------
 
-local function setVector(
-    x,
-    y
-)
+if not thruster then
 
-    if not thruster then
-        return false
-    end
-
-    --------------------------------------------------
-    -- Combined API
-    --------------------------------------------------
-
-    if type(
-        thruster.setVector
-    ) == "function" then
-
-        local ok =
-            pcall(
-                function()
-
-                    thruster.setVector(
-                        x,
-                        y
-                    )
-
-                end
-            )
-
-        return ok
-    end
-
-    --------------------------------------------------
-    -- Separate API
-    --------------------------------------------------
-
-    local xOK = true
-    local yOK = true
-
-    if type(
-        thruster.setVectorX
-    ) == "function" then
-
-        xOK =
-            pcall(
-                function()
-
-                    thruster.setVectorX(x)
-
-                end
-            )
-    end
-
-    if type(
-        thruster.setVectorY
-    ) == "function" then
-
-        yOK =
-            pcall(
-                function()
-
-                    thruster.setVectorY(y)
-
-                end
-            )
-    end
-
-    return xOK and yOK
-end
-
---------------------------------------------------
--- THROTTLE
---------------------------------------------------
-
-local function setPower(power)
-
-    if not thruster then
-        return
-    end
-
-    if type(
-        thruster.setPowerNormalized
-    ) == "function" then
-
-        pcall(
-            function()
-
-                thruster.setPowerNormalized(
-                    power
-                )
-
-            end
-        )
-
-        return
-    end
-
-    if type(
-        thruster.setThrustNormalized
-    ) == "function" then
-
-        pcall(
-            function()
-
-                thruster.setThrustNormalized(
-                    power
-                )
-
-            end
-        )
-
-        return
-    end
-
-    if type(
-        thruster.setPower
-    ) == "function" then
-
-        pcall(
-            function()
-
-                thruster.setPower(
-                    math.floor(
-                        power * 15
-                        + 0.5
-                    )
-                )
-
-            end
-        )
-    end
-end
-
---------------------------------------------------
--- TELEMETRY
---------------------------------------------------
-
-local function readTelemetry()
-
-    if not thruster then
-
-        state.actuator.online =
-            false
-
-        state.actuator.status =
-            "OFFLINE"
-
-        state.actuator.type =
-            "NONE"
-
-        return
-    end
-
-    state.actuator.online =
-        true
-
-    state.actuator.type =
-        thrusterType
-
-    --------------------------------------------------
-    -- VECTOR X
-    --------------------------------------------------
-
-    if type(
-        thruster.getVectorX
-    ) == "function" then
-
-        local ok, value =
-            pcall(
-                function()
-
-                    return thruster.getVectorX()
-
-                end
-            )
-
-        if ok and value ~= nil then
-
-            state.actuator.vectorX =
-                value
-
-        end
-    end
-
-    --------------------------------------------------
-    -- VECTOR Y
-    --------------------------------------------------
-
-    if type(
-        thruster.getVectorY
-    ) == "function" then
-
-        local ok, value =
-            pcall(
-                function()
-
-                    return thruster.getVectorY()
-
-                end
-            )
-
-        if ok and value ~= nil then
-
-            state.actuator.vectorY =
-                value
-
-        end
-    end
-
-    --------------------------------------------------
-    -- POWER
-    --------------------------------------------------
-
-    if type(
-        thruster.getPower
-    ) == "function" then
-
-        local ok, value =
-            pcall(
-                function()
-
-                    return thruster.getPower()
-
-                end
-            )
-
-        if ok and value ~= nil then
-
-            state.actuator.power =
-                value
-
-        end
-    end
-
-    --------------------------------------------------
-    -- THRUST
-    --------------------------------------------------
-
-    if type(
-        thruster.getCurrentThrustKN
-    ) == "function" then
-
-        local ok, value =
-            pcall(
-                function()
-
-                    return thruster.getCurrentThrustKN()
-
-                end
-            )
-
-        if ok and value ~= nil then
-
-            state.actuator.thrust =
-                value
-
-        end
-    end
-
-    state.actuator.lastUpdate =
-        os.clock()
-
-    state.actuator.updateCount =
-        state.actuator.updateCount + 1
-end
-
---------------------------------------------------
--- UPDATE
---------------------------------------------------
-
-local function update()
-
-    thruster, thrusterType =
-        findThruster()
-
-    if not thruster then
-
-        state.actuator.online =
-            false
-
-        state.actuator.status =
-            "OFFLINE"
-
-        state.actuator.type =
-            "NONE"
-
-        return
-    end
-
-    --------------------------------------------------
-    -- CONTROL ENABLED
-    --------------------------------------------------
-
-    if state.system.controlEnabled
-        and state.navigation.online
-        and state.guidance.online
-        and state.target.set then
-
-        state.actuator.commandX =
-            state.guidance.commandX
-
-        state.actuator.commandY =
-            state.guidance.commandY
-
-        setVector(
-            state.guidance.commandX,
-            state.guidance.commandY
-        )
-
-    else
-
-        state.actuator.commandX = 0
-        state.actuator.commandY = 0
-
-        setVector(0, 0)
-
-    end
-
-    state.actuator.status =
-        state.system.controlEnabled
-        and "ACTIVE"
-        or "MONITOR"
-
-    readTelemetry()
-end
-
---------------------------------------------------
--- INIT
---------------------------------------------------
-
-function init()
-
-    thruster, thrusterType =
-        findThruster()
-
-end
-
---------------------------------------------------
--- LOOP
---------------------------------------------------
-
-function run()
+    state.thruster.online = false
 
     while state.system.running do
-
-        update()
-
-        sleep(0.05)
-
+        sleep(1)
     end
 
-    shutdown()
+    return
+end
+
+state.thruster.online = true
+
+--------------------------------------------------
+-- UPDATE TELEMETRY
+--------------------------------------------------
+
+local function updateTelemetry()
+
+    local ok, value
+
+    ok, value =
+        pcall(
+            thruster.getVectorX
+        )
+
+    if ok and value ~= nil then
+        state.thruster.vectorX = value
+    end
+
+    ok, value =
+        pcall(
+            thruster.getVectorY
+        )
+
+    if ok and value ~= nil then
+        state.thruster.vectorY = value
+    end
+
+    ok, value =
+        pcall(
+            thruster.getTargetVectorX
+        )
+
+    if ok and value ~= nil then
+        state.thruster.targetVectorX = value
+    end
+
+    ok, value =
+        pcall(
+            thruster.getTargetVectorY
+        )
+
+    if ok and value ~= nil then
+        state.thruster.targetVectorY = value
+    end
+
+    ok, value =
+        pcall(
+            thruster.getPower
+        )
+
+    if ok and value ~= nil then
+        state.thruster.power = value
+    end
+
+    ok, value =
+        pcall(
+            thruster.getThrust
+        )
+
+    if ok and value ~= nil then
+        state.thruster.thrust = value
+    end
 end
 
 --------------------------------------------------
--- SHUTDOWN
+-- APPLY COMMAND
 --------------------------------------------------
 
-function shutdown()
+local function updateCommand()
 
-    if not thruster then
+    local x =
+        state.guidance.commandX or 0
 
-        thruster, thrusterType =
-            findThruster()
+    local y =
+        state.guidance.commandY or 0
 
-    end
+    x = math.max(-1, math.min(1, x))
+    y = math.max(-1, math.min(1, y))
 
-    -- ALWAYS zero vector.
-
-    setVector(
-        0,
-        0
+    pcall(
+        thruster.setVector,
+        x,
+        y
     )
-
-    -- ALWAYS zero throttle.
-
-    setPower(0)
-
-    state.actuator.commandX = 0
-    state.actuator.commandY = 0
-
-    state.actuator.vectorX = 0
-    state.actuator.vectorY = 0
-
-    state.actuator.power = 0
-
-    state.actuator.online =
-        false
-
-    state.actuator.status =
-        "OFFLINE"
 end
 
-return {
-    init = init,
-    run = run,
-    shutdown = shutdown
-}
+--------------------------------------------------
+-- MAIN LOOP
+--------------------------------------------------
+
+while state.system.running do
+
+    updateCommand()
+    updateTelemetry()
+
+    sleep(0.05)
+end
+
+--------------------------------------------------
+-- SAFE SHUTDOWN
+--------------------------------------------------
+
+pcall(
+    thruster.setVector,
+    0,
+    0
+)
+
+state.thruster.vectorX = 0
+state.thruster.vectorY = 0
+
+state.thruster.targetVectorX = 0
+state.thruster.targetVectorY = 0
+
+state.thruster.online = false

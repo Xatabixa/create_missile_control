@@ -1,25 +1,14 @@
--- Guidance subsystem.
---
--- Converts target direction in body coordinates
--- into normalized vector commands.
+-- Guidance module
 
-local state = ...
+local state = require("state")
 
-local MAX_COMMAND = 1.0
+local MAX_VECTOR = 0.25
 
-local YAW_GAIN = 1.8
-local PITCH_GAIN = 1.8
+local BEARING_GAIN = 1.0
+local ELEVATION_GAIN = 1.0
 
-local MIN_DISTANCE = 2.0
-
--- Reverse these if the physical installation is mirrored.
-
-local YAW_SIGN = 1.0
-local PITCH_SIGN = 1.0
-
---------------------------------------------------
--- CLAMP
---------------------------------------------------
+local DEADZONE =
+    math.rad(0.5)
 
 local function clamp(
     value,
@@ -38,183 +27,82 @@ local function clamp(
     return value
 end
 
---------------------------------------------------
--- RESET
---------------------------------------------------
-
-local function reset()
-
-    state.guidance.commandX = 0
-    state.guidance.commandY = 0
-
-    state.guidance.yawError = 0
-    state.guidance.pitchError = 0
-end
-
---------------------------------------------------
--- UPDATE
---------------------------------------------------
-
 local function update()
-
-    if not state.system.running then
-        return
-    end
 
     if not state.navigation.online then
 
         state.guidance.online = false
+        state.guidance.active = false
 
-        state.guidance.status =
-            "OFFLINE"
-
-        reset()
-
-        return
-    end
-
-    if not state.target.set then
-
-        state.guidance.online = true
-
-        state.guidance.status =
-            "NO TARGET"
-
-        reset()
+        state.guidance.commandX = 0
+        state.guidance.commandY = 0
 
         return
     end
-
-    local bx =
-        state.navigation.bodyX
-
-    local by =
-        state.navigation.bodyY
-
-    local bz =
-        state.navigation.bodyZ
-
-    local horizontal =
-        math.sqrt(
-            bx * bx
-            + bz * bz
-        )
-
-    local distance =
-        math.sqrt(
-            horizontal * horizontal
-            + by * by
-        )
-
-    if distance <= MIN_DISTANCE then
-
-        state.guidance.online = true
-
-        state.guidance.status =
-            "ON TARGET"
-
-        reset()
-
-        return
-    end
-
-    --------------------------------------------------
-    -- ANGULAR ERRORS
-    --------------------------------------------------
-
-    local yawError =
-        math.atan2(
-            bx,
-            bz
-        )
-
-    local pitchError =
-        math.atan2(
-            by,
-            horizontal
-        )
-
-    --------------------------------------------------
-    -- COMMANDS
-    --------------------------------------------------
-
-    local commandX =
-        clamp(
-            math.sin(yawError)
-            * YAW_GAIN,
-
-            -MAX_COMMAND,
-            MAX_COMMAND
-        )
-
-    local commandY =
-        clamp(
-            math.sin(pitchError)
-            * PITCH_GAIN,
-
-            -MAX_COMMAND,
-            MAX_COMMAND
-        )
-
-    state.guidance.yawError =
-        yawError
-
-    state.guidance.pitchError =
-        pitchError
-
-    state.guidance.commandX =
-        commandX * YAW_SIGN
-
-    state.guidance.commandY =
-        commandY * PITCH_SIGN
 
     state.guidance.online = true
 
-    state.guidance.status =
-        state.system.controlEnabled
-        and "ACTIVE"
-        or "MONITOR"
+    local bearing =
+        state.navigation.bearing or 0
 
-    state.guidance.lastUpdate =
-        os.clock()
+    local elevation =
+        state.navigation.elevation or 0
 
-    state.guidance.updateCount =
-        state.guidance.updateCount + 1
-end
+    --------------------------------------------------
+    -- YAW CORRECTION
+    --------------------------------------------------
 
---------------------------------------------------
--- INIT
---------------------------------------------------
+    local commandY = 0
 
-function init()
+    if math.abs(bearing) > DEADZONE then
 
-    reset()
-
-end
-
---------------------------------------------------
--- LOOP
---------------------------------------------------
-
-function run()
-
-    while state.system.running do
-
-        update()
-
-        sleep(0.05)
+        commandY =
+            bearing *
+            BEARING_GAIN
 
     end
 
-    reset()
+    --------------------------------------------------
+    -- PITCH CORRECTION
+    --------------------------------------------------
 
-    state.guidance.online = false
+    local commandX = 0
 
-    state.guidance.status =
-        "OFFLINE"
+    if math.abs(elevation) > DEADZONE then
+
+        commandX =
+            elevation *
+            ELEVATION_GAIN
+
+    end
+
+    state.guidance.commandX =
+        clamp(
+            commandX,
+            -MAX_VECTOR,
+            MAX_VECTOR
+        )
+
+    state.guidance.commandY =
+        clamp(
+            commandY,
+            -MAX_VECTOR,
+            MAX_VECTOR
+        )
+
+    state.guidance.active =
+        state.navigation.hasNavTarget
 end
 
-return {
-    init = init,
-    run = run
-}
+while state.system.running do
+
+    update()
+
+    sleep(0.05)
+end
+
+state.guidance.commandX = 0
+state.guidance.commandY = 0
+
+state.guidance.active = false
+state.guidance.online = false

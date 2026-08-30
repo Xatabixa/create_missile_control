@@ -1,498 +1,281 @@
--- Navigation subsystem
---
--- Position:
---   CC:Tweaked GPS
---
--- Orientation:
---   Create: Avionics navigation_table / gimbal_sensor
---
--- Target:
---   target.cfg
+-- Navigation and flight sensor module
 
-local state = ...
-
-local GPS_INTERVAL = 0.75
-local TARGET_INTERVAL = 0.20
-
-local navigationTable = nil
-local gimbalSensor = nil
-local modem = nil
-
-local lastX = nil
-local lastY = nil
-local lastZ = nil
-local lastTime = nil
-
-local gpsTimer
-local targetTimer
+local state = require("state")
 
 --------------------------------------------------
--- SAFE METHOD CALL
+-- PERIPHERALS
 --------------------------------------------------
 
-local function safeCall(object, method, ...)
+local navigationTable =
+    peripheral.find("navigation_table")
 
-    if not object then
-        return nil
-    end
+local altitudeSensor =
+    peripheral.find("altitude_sensor")
 
-    if type(object[method]) ~= "function" then
-        return nil
-    end
-
-    local args = {...}
-
-    local ok, a, b, c, d =
-        pcall(
-            function()
-
-                return object[method](
-                    table.unpack(args)
-                )
-
-            end
-        )
-
-    if not ok then
-        return nil
-    end
-
-    return a, b, c, d
-end
+local gimbalSensor =
+    peripheral.find("gimbal_sensor")
 
 --------------------------------------------------
--- FIND PERIPHERALS
---------------------------------------------------
-
-local function findPeripherals()
-
-    navigationTable =
-        peripheral.find(
-            "navigation_table"
-        )
-
-    gimbalSensor =
-        peripheral.find(
-            "gimbal_sensor"
-        )
-
-    modem =
-        peripheral.find(
-            "modem"
-        )
-
-    state.navigation.navTable =
-        navigationTable ~= nil
-
-    state.navigation.gimbal =
-        gimbalSensor ~= nil
-
-    state.navigation.gps =
-        modem ~= nil
-end
-
---------------------------------------------------
--- TARGET RELOAD
---------------------------------------------------
-
-local function updateTarget()
-
-    if not fs.exists(
-        "target.cfg"
-    ) then
-
-        return
-    end
-
-    local file =
-        fs.open(
-            "target.cfg",
-            "r"
-        )
-
-    if not file then
-        return
-    end
-
-    local data =
-        textutils.unserialize(
-            file.readAll()
-        )
-
-    file.close()
-
-    if type(data) ~= "table" then
-        return
-    end
-
-    local revision =
-        tonumber(data.revision)
-
-    if revision
-        and revision
-        == state.target.revision then
-
-        return
-    end
-
-    if data.set == false then
-
-        state.target.set = false
-
-        state.target.revision =
-            revision
-            or (
-                state.target.revision + 1
-            )
-
-        return
-    end
-
-    local x = tonumber(data.x)
-    local y = tonumber(data.y)
-    local z = tonumber(data.z)
-
-    if not x or not y or not z then
-        return
-    end
-
-    state.target.x = x
-    state.target.y = y
-    state.target.z = z
-
-    state.target.set = true
-
-    state.target.revision =
-        revision
-        or (
-            state.target.revision + 1
-        )
-end
-
---------------------------------------------------
--- GPS UPDATE
+-- GPS
 --------------------------------------------------
 
 local function updateGPS()
 
-    if not modem then
-
-        state.navigation.status =
-            "NO MODEM"
-
-        state.navigation.online =
-            false
-
-        return
-    end
-
     local x, y, z =
-        gps.locate(
-            0.35,
-            false
-        )
+        gps.locate(1, false)
 
-    if not x then
+    if x ~= nil then
 
-        state.navigation.status =
-            "GPS WAIT"
+        state.navigation.position.x = x
+        state.navigation.position.y = y
+        state.navigation.position.z = z
 
-        state.navigation.online =
-            false
-
-        return
-    end
-
-    local now =
-        os.clock()
-
-    if lastX ~= nil
-        and lastTime ~= nil then
-
-        local dt =
-            now - lastTime
-
-        if dt > 0.001 then
-
-            state.navigation.vx =
-                (x - lastX) / dt
-
-            state.navigation.vy =
-                (y - lastY) / dt
-
-            state.navigation.vz =
-                (z - lastZ) / dt
-
-        end
-    end
-
-    state.navigation.x = x
-    state.navigation.y = y
-    state.navigation.z = z
-
-    state.navigation.altitude = y
-
-    state.navigation.speed =
-        math.sqrt(
-
-            state.navigation.vx
-                * state.navigation.vx
-
-            +
-
-            state.navigation.vy
-                * state.navigation.vy
-
-            +
-
-            state.navigation.vz
-                * state.navigation.vz
-
-        )
-
-    state.navigation.verticalSpeed =
-        state.navigation.vy
-
-    lastX = x
-    lastY = y
-    lastZ = z
-
-    lastTime = now
-end
-
---------------------------------------------------
--- ATTITUDE
---------------------------------------------------
-
-local function updateAttitude()
-
-    if navigationTable then
-
-        local orientation =
-            safeCall(
-                navigationTable,
-                "getOrientation"
-            )
-
-        if type(orientation) == "table" then
-
-            state.navigation.orientation = {
-
-                tonumber(
-                    orientation[1]
-                ) or 0,
-
-                tonumber(
-                    orientation[2]
-                ) or 0,
-
-                tonumber(
-                    orientation[3]
-                ) or 0,
-
-                tonumber(
-                    orientation[4]
-                ) or 1
-            }
-
-        end
-
-        local heading =
-            safeCall(
-                navigationTable,
-                "getHeadingRad"
-            )
-
-        if heading ~= nil then
-
-            state.navigation.heading =
-                heading
-
-        end
-    end
-
-    if gimbalSensor then
-
-        local angles =
-            safeCall(
-                gimbalSensor,
-                "getAnglesRad"
-            )
-
-        if type(angles) == "table" then
-
-            state.navigation.pitch =
-                tonumber(
-                    angles[1]
-                ) or 0
-
-            state.navigation.roll =
-                tonumber(
-                    angles[2]
-                ) or 0
-
-        end
-    end
-end
-
---------------------------------------------------
--- WORLD -> BODY
---------------------------------------------------
-
-local function worldToBody(
-    x,
-    y,
-    z,
-    q
-)
-
-    local qx =
-        q[1] or 0
-
-    local qy =
-        q[2] or 0
-
-    local qz =
-        q[3] or 0
-
-    local qw =
-        q[4] or 1
-
-    local ix =
-        qw * x
-        + qy * z
-        - qz * y
-
-    local iy =
-        qw * y
-        + qz * x
-        - qx * z
-
-    local iz =
-        qw * z
-        + qx * y
-        - qy * x
-
-    local iw =
-        -qx * x
-        - qy * y
-        - qz * z
-
-    local bx =
-        ix * qw
-        + iw * -qx
-        + iy * -qz
-        - iz * -qy
-
-    local by =
-        iy * qw
-        + iw * -qy
-        + iz * -qx
-        - ix * -qz
-
-    local bz =
-        iz * qw
-        + iw * -qz
-        + ix * -qy
-        - iy * -qx
-
-    return bx, by, bz
-end
-
---------------------------------------------------
--- TARGET SOLUTION
---------------------------------------------------
-
-local function updateTargetSolution()
-
-    if not state.target.set then
-
-        state.navigation.distance = 0
-        state.navigation.groundDistance = 0
-        state.navigation.verticalOffset = 0
-        state.navigation.bearing = 0
-
-        state.navigation.bodyX = 0
-        state.navigation.bodyY = 0
-        state.navigation.bodyZ = 0
-
-        return
-    end
-
-    if not state.navigation.gps then
-        return
-    end
-
-    local dx =
-        state.target.x
-        - state.navigation.x
-
-    local dy =
-        state.target.y
-        - state.navigation.y
-
-    local dz =
-        state.target.z
-        - state.navigation.z
-
-    local groundDistance =
-        math.sqrt(
-            dx * dx
-            + dz * dz
-        )
-
-    local distance =
-        math.sqrt(
-            dx * dx
-            + dy * dy
-            + dz * dz
-        )
-
-    state.navigation.distance =
-        distance
-
-    state.navigation.groundDistance =
-        groundDistance
-
-    state.navigation.verticalOffset =
-        dy
-
-    if groundDistance > 0.001 then
-
-        state.navigation.bearing =
-            math.atan2(
-                dx,
-                dz
-            )
+        state.navigation.positionValid = true
+        state.navigation.gps = true
 
     else
 
-        state.navigation.bearing = 0
+        state.navigation.positionValid = false
+        state.navigation.gps = false
 
     end
-
-    local bx, by, bz =
-        worldToBody(
-            dx,
-            dy,
-            dz,
-            state.navigation.orientation
-        )
-
-    state.navigation.bodyX = bx
-    state.navigation.bodyY = by
-    state.navigation.bodyZ = bz
 end
 
 --------------------------------------------------
--- INIT
+-- NAVIGATION TABLE
 --------------------------------------------------
 
-function init()
+local function updateNavigationTable()
 
-    findPeripherals()
+    if not navigationTable then
+        state.navigation.navigationTable = false
+        return
+    end
 
-    updateTarget()
+    state.navigation.navigationTable = true
+
+    local ok, value
+
+    ok, value =
+        pcall(
+            navigationTable.hasTarget
+        )
+
+    if ok and value ~= nil then
+        state.navigation.hasNavTarget = value
+    end
+
+    ok, value =
+        pcall(
+            navigationTable.getBearingRad
+        )
+
+    if ok and value ~= nil then
+        state.navigation.bearing = value
+    end
+
+    ok, value =
+        pcall(
+            navigationTable.getRelativeAngleRad
+        )
+
+    if ok and value ~= nil then
+        state.navigation.relativeAngle = value
+    end
+
+    ok, value =
+        pcall(
+            navigationTable.getVerticalOffsetToTarget
+        )
+
+    if ok and value ~= nil then
+        state.navigation.elevation = value
+    end
+
+    ok, value =
+        pcall(
+            navigationTable.getDistanceToTarget
+        )
+
+    if ok and value ~= nil then
+        state.navigation.distance = value
+    end
+
+    ok, value =
+        pcall(
+            navigationTable.getClosureRate
+        )
+
+    if ok and value ~= nil then
+        state.navigation.closureRate = value
+    end
+
+    ok, value =
+        pcall(
+            navigationTable.getHeadingRad
+        )
+
+    if ok and value ~= nil then
+        state.navigation.heading = value
+    end
+end
+
+--------------------------------------------------
+-- ALTITUDE SENSOR
+--------------------------------------------------
+
+local function updateAltitude()
+
+    if not altitudeSensor then
+
+        state.navigation.altitudeSensor = false
+
+        return
+    end
+
+    state.navigation.altitudeSensor = true
+
+    local ok, value
+
+    ok, value =
+        pcall(
+            altitudeSensor.getHeight
+        )
+
+    if ok and value ~= nil then
+        state.navigation.altitude = value
+    end
+
+    ok, value =
+        pcall(
+            altitudeSensor.getVerticalSpeed
+        )
+
+    if ok and value ~= nil then
+        state.navigation.verticalSpeed = value
+    end
+
+    ok, value =
+        pcall(
+            altitudeSensor.getAirPressure
+        )
+
+    if ok and value ~= nil then
+        state.navigation.airPressure = value
+    end
+end
+
+--------------------------------------------------
+-- GIMBAL SENSOR
+--------------------------------------------------
+
+local function updateGimbal()
+
+    if not gimbalSensor then
+
+        state.navigation.gimbalSensor = false
+
+        return
+    end
+
+    state.navigation.gimbalSensor = true
+
+    --------------------------------------------------
+    -- ATTITUDE
+    --------------------------------------------------
+
+    local ok, angles =
+        pcall(
+            gimbalSensor.getAnglesRad
+        )
+
+    if ok and type(angles) == "table" then
+
+        state.navigation.pitch =
+            angles[1] or 0
+
+        state.navigation.roll =
+            angles[2] or 0
+
+    end
+
+    --------------------------------------------------
+    -- ANGULAR RATES
+    --------------------------------------------------
+
+    ok, angles =
+        pcall(
+            gimbalSensor.getAngularRatesRad
+        )
+
+    if ok and type(angles) == "table" then
+
+        state.navigation.angularRateX =
+            angles[1] or 0
+
+        state.navigation.angularRateY =
+            angles[2] or 0
+
+        state.navigation.angularRateZ =
+            angles[3] or 0
+
+    end
+
+    --------------------------------------------------
+    -- GRAVITY
+    --------------------------------------------------
+
+    ok, angles =
+        pcall(
+            gimbalSensor.getGravity
+        )
+
+    if ok and type(angles) == "table" then
+
+        state.navigation.gravityX =
+            angles[1] or 0
+
+        state.navigation.gravityY =
+            angles[2] or 0
+
+        state.navigation.gravityZ =
+            angles[3] or 0
+
+    end
+
+    --------------------------------------------------
+    -- LINEAR ACCELERATION
+    --------------------------------------------------
+
+    ok, angles =
+        pcall(
+            gimbalSensor.getLinearAcceleration
+        )
+
+    if ok and type(angles) == "table" then
+
+        state.navigation.accelerationX =
+            angles[1] or 0
+
+        state.navigation.accelerationY =
+            angles[2] or 0
+
+        state.navigation.accelerationZ =
+            angles[3] or 0
+
+    end
+end
+
+--------------------------------------------------
+-- STATUS
+--------------------------------------------------
+
+local function updateStatus()
+
+    state.navigation.online =
+        navigationTable ~= nil
+        or altitudeSensor ~= nil
+        or gimbalSensor ~= nil
 
 end
 
@@ -500,102 +283,20 @@ end
 -- MAIN LOOP
 --------------------------------------------------
 
-function run()
+while state.system.running do
 
-    gpsTimer =
-        os.startTimer(
-            0.05
-        )
+    updateStatus()
 
-    targetTimer =
-        os.startTimer(
-            TARGET_INTERVAL
-        )
+    updateGPS()
+    updateNavigationTable()
+    updateAltitude()
+    updateGimbal()
 
-    while state.system.running do
-
-        local event, id =
-            os.pullEventRaw()
-
-        if event == "timer" then
-
-            if id == gpsTimer then
-
-                findPeripherals()
-
-                updateGPS()
-
-                updateAttitude()
-
-                updateTargetSolution()
-
-                if state.navigation.gps
-                    and state.navigation.navTable then
-
-                    state.navigation.online =
-                        true
-
-                    state.navigation.status =
-                        "ONLINE"
-
-                elseif not state.navigation.gps then
-
-                    state.navigation.online =
-                        false
-
-                    state.navigation.status =
-                        "NO GPS"
-
-                else
-
-                    state.navigation.online =
-                        false
-
-                    state.navigation.status =
-                        "NO NAV TABLE"
-
-                end
-
-                state.navigation.lastUpdate =
-                    os.clock()
-
-                state.navigation.updateCount =
-                    state.navigation.updateCount
-                    + 1
-
-                state.system.tick =
-                    state.system.tick + 1
-
-                gpsTimer =
-                    os.startTimer(
-                        GPS_INTERVAL
-                    )
-            end
-
-            if id == targetTimer then
-
-                updateTarget()
-
-                targetTimer =
-                    os.startTimer(
-                        TARGET_INTERVAL
-                    )
-            end
-        end
-
-        if event == "terminate" then
-
-            state.system.running =
-                false
-
-        end
-    end
-
-    state.navigation.online = false
-    state.navigation.status = "OFFLINE"
+    sleep(0.05)
 end
 
-return {
-    init = init,
-    run = run
-}
+state.navigation.online = false
+state.navigation.navigationTable = false
+state.navigation.altitudeSensor = false
+state.navigation.gimbalSensor = false
+state.navigation.gps = false
