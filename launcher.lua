@@ -144,10 +144,29 @@ local function runDisplay()
 end
 
 parallel.waitForAll(
-    runNavigation,
-    runGuidance,
-    runActuator,
-    runDisplay
+    function()
+        runModule("NAVIGATION", function()
+            navigation.run(state)
+        end)
+    end,
+
+    function()
+        runModule("GUIDANCE", function()
+            guidance.run(state)
+        end)
+    end,
+
+    function()
+        runModule("ACTUATOR", function()
+            actuator.run(state)
+        end)
+    end,
+
+    function()
+        runModule("DISPLAY", function()
+            display.run(state)
+        end)
+    end
 )
 
 state.system.running = false
