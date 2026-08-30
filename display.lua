@@ -3,6 +3,10 @@
 
 local function run(state)
 
+    --------------------------------------------------
+    -- DISPLAY
+    --------------------------------------------------
+
     local monitor =
         peripheral.find("monitor")
 
@@ -21,32 +25,67 @@ local function run(state)
 
     local page = 1
 
+    --------------------------------------------------
+    -- BASIC DISPLAY FUNCTIONS
+    --------------------------------------------------
+
     local function clear()
-        screen.setBackgroundColor(colors.black)
-        screen.setTextColor(colors.white)
+
+        screen.setBackgroundColor(
+            colors.black
+        )
+
+        screen.setTextColor(
+            colors.white
+        )
+
         screen.clear()
-        screen.setCursorPos(1, 1)
+
+        screen.setCursorPos(
+            1,
+            1
+        )
     end
 
-    local function line(y, text)
+    local function line(
+        y,
+        text
+    )
+
         if y < 1 or y > height then
             return
         end
 
-        text = tostring(text or "")
+        text =
+            tostring(
+                text or ""
+            )
 
         if #text > width then
-            text = text:sub(1, width)
+            text =
+                text:sub(
+                    1,
+                    width
+                )
         end
 
-        screen.setCursorPos(1, y)
+        screen.setCursorPos(
+            1,
+            y
+        )
+
         screen.clearLine()
+
         screen.write(text)
     end
 
-    local function number(value, decimals)
+    local function number(
+        value,
+        decimals
+    )
 
-        value = tonumber(value)
+        value =
+            tonumber(value)
 
         if not value then
             return "---"
@@ -54,15 +93,20 @@ local function run(state)
 
         return string.format(
             "%." ..
-            tostring(decimals or 1) ..
+            tostring(
+                decimals or 1
+            ) ..
             "f",
             value
         )
     end
 
-    local function degrees(value)
+    local function degrees(
+        value
+    )
 
-        value = tonumber(value)
+        value =
+            tonumber(value)
 
         if not value then
             return "---"
@@ -74,7 +118,13 @@ local function run(state)
         )
     end
 
-    local function header(title)
+    --------------------------------------------------
+    -- HEADER
+    --------------------------------------------------
+
+    local function header(
+        title
+    )
 
         line(
             1,
@@ -84,7 +134,9 @@ local function run(state)
         line(
             2,
             "MODE: " ..
-            tostring(state.system.mode)
+            tostring(
+                state.system.mode
+            )
         )
 
         line(
@@ -97,7 +149,10 @@ local function run(state)
             "--------------------------------"
         )
 
-        line(5, title)
+        line(
+            5,
+            title
+        )
 
         line(
             6,
@@ -106,16 +161,19 @@ local function run(state)
     end
 
     --------------------------------------------------
-    -- NAVIGATION PAGE
+    -- NAVIGATION
     --------------------------------------------------
 
     local function navigationPage()
 
-        clear()
-        header("NAVIGATION")
-
         local n =
             state.navigation
+
+        clear()
+
+        header(
+            "NAVIGATION"
+        )
 
         line(
             7,
@@ -126,55 +184,80 @@ local function run(state)
         line(
             8,
             "GPS: " ..
-            (n.gps and "ONLINE" or "OFFLINE")
+            (
+                n.gps
+                and "ONLINE"
+                or "OFFLINE"
+            )
         )
 
         line(
             9,
             "ALTITUDE: " ..
-            number(n.altitude, 1)
+            number(
+                n.altitude,
+                1
+            )
         )
 
         line(
             10,
             "SPEED: " ..
-            number(n.speed, 2)
+            number(
+                n.speed,
+                2
+            )
         )
 
         line(
             11,
             "VX: " ..
-            number(n.velocity.x, 2)
+            number(
+                n.velocity.x,
+                2
+            )
         )
 
         line(
             12,
             "VY: " ..
-            number(n.velocity.y, 2)
+            number(
+                n.velocity.y,
+                2
+            )
         )
 
         line(
             13,
             "VZ: " ..
-            number(n.velocity.z, 2)
+            number(
+                n.velocity.z,
+                2
+            )
         )
 
         line(
             15,
             "HEADING: " ..
-            degrees(n.heading)
+            degrees(
+                n.heading
+            )
         )
 
         line(
             16,
             "PITCH: " ..
-            degrees(n.pitch)
+            degrees(
+                n.pitch
+            )
         )
 
         line(
             17,
             "ROLL: " ..
-            degrees(n.roll)
+            degrees(
+                n.roll
+            )
         )
 
         line(
@@ -209,16 +292,19 @@ local function run(state)
     end
 
     --------------------------------------------------
-    -- GUIDANCE PAGE
+    -- GUIDANCE
     --------------------------------------------------
 
     local function guidancePage()
 
-        clear()
-        header("GUIDANCE")
-
         local g =
             state.guidance
+
+        clear()
+
+        header(
+            "GUIDANCE"
+        )
 
         line(
             7,
@@ -239,25 +325,36 @@ local function run(state)
         line(
             10,
             "YAW ERROR: " ..
-            degrees(g.yawError)
+            degrees(
+                g.yawError
+            )
         )
 
         line(
             11,
             "PITCH ERROR: " ..
-            number(g.pitchError, 2)
+            number(
+                g.pitchError,
+                2
+            )
         )
 
         line(
             13,
             "COMMAND X: " ..
-            number(g.commandX, 3)
+            number(
+                g.commandX,
+                3
+            )
         )
 
         line(
             14,
             "COMMAND Y: " ..
-            number(g.commandY, 3)
+            number(
+                g.commandY,
+                3
+            )
         )
 
         line(
@@ -282,16 +379,22 @@ local function run(state)
     end
 
     --------------------------------------------------
-    -- ENGINE PAGE
+    -- ENGINE
     --------------------------------------------------
 
     local function enginePage()
 
-        clear()
-        header("VECTOR THRUSTER")
-
         local t =
             state.thruster
+
+        local g =
+            state.guidance
+
+        clear()
+
+        header(
+            "VECTOR THRUSTER"
+        )
 
         line(
             7,
@@ -301,42 +404,78 @@ local function run(state)
 
         line(
             9,
-            "TARGET X: " ..
-            number(t.targetVectorX, 3)
+            "GUIDANCE X: " ..
+            number(
+                g.commandX,
+                3
+            )
         )
 
         line(
             10,
-            "TARGET Y: " ..
-            number(t.targetVectorY, 3)
+            "GUIDANCE Y: " ..
+            number(
+                g.commandY,
+                3
+            )
         )
 
         line(
             12,
-            "ACTUAL X: " ..
-            number(t.vectorX, 3)
+            "TARGET X: " ..
+            number(
+                t.targetVectorX,
+                3
+            )
         )
 
         line(
             13,
-            "ACTUAL Y: " ..
-            number(t.vectorY, 3)
+            "TARGET Y: " ..
+            number(
+                t.targetVectorY,
+                3
+            )
         )
 
         line(
             15,
-            "POWER: " ..
-            number(t.power, 3)
+            "ACTUAL X: " ..
+            number(
+                t.vectorX,
+                3
+            )
         )
 
         line(
             16,
-            "THRUST: " ..
-            number(t.thrust, 3)
+            "ACTUAL Y: " ..
+            number(
+                t.vectorY,
+                3
+            )
         )
 
         line(
             18,
+            "POWER: " ..
+            number(
+                t.power,
+                3
+            )
+        )
+
+        line(
+            19,
+            "THRUST: " ..
+            number(
+                t.thrust,
+                3
+            )
+        )
+
+        line(
+            21,
             "CONTROL: " ..
             (
                 state.system.controlEnabled
@@ -347,18 +486,23 @@ local function run(state)
     end
 
     --------------------------------------------------
-    -- SYSTEM PAGE
+    -- SYSTEM
     --------------------------------------------------
 
     local function systemPage()
 
         clear()
-        header("SYSTEM")
+
+        header(
+            "SYSTEM"
+        )
 
         line(
             7,
             "SYSTEM: " ..
-            tostring(state.system.status)
+            tostring(
+                state.system.status
+            )
         )
 
         line(
@@ -419,19 +563,28 @@ local function run(state)
         line(
             16,
             "X: " ..
-            number(state.target.x, 1)
+            number(
+                state.target.x,
+                1
+            )
         )
 
         line(
             17,
             "Y: " ..
-            number(state.target.y, 1)
+            number(
+                state.target.y,
+                1
+            )
         )
 
         line(
             18,
             "Z: " ..
-            number(state.target.z, 1)
+            number(
+                state.target.z,
+                1
+            )
         )
 
         line(
@@ -451,21 +604,31 @@ local function run(state)
 
     local function draw()
 
-        state.display.page =
-            page
-
         if page == 1 then
+
             navigationPage()
 
         elseif page == 2 then
+
             guidancePage()
 
         elseif page == 3 then
+
             enginePage()
 
-        else
+        elseif page == 4 then
+
             systemPage()
+
+        else
+
+            page = 1
+
+            navigationPage()
         end
+
+        state.display.page =
+            page
     end
 
     --------------------------------------------------
@@ -541,7 +704,7 @@ local function run(state)
 
             line(
                 13,
-                "Field " ..
+                "FIELD " ..
                 tostring(field) ..
                 "/3"
             )
@@ -549,32 +712,22 @@ local function run(state)
             local event, key =
                 os.pullEventRaw()
 
-            --------------------------------------------------
-            -- CHARACTER INPUT
-            --------------------------------------------------
-
             if event == "char" then
 
                 local c = key
 
-                if c:match("[%d%.%-]") then
+                if c:match(
+                    "[%d%.%-]"
+                ) then
 
                     values[field] =
                         values[field] .. c
-
                 end
-
-            --------------------------------------------------
-            -- KEY INPUT
-            --------------------------------------------------
 
             elseif event == "key" then
 
-                --------------------------------------------------
-                -- BACKSPACE
-                --------------------------------------------------
-
-                if key == keys.backspace then
+                if key ==
+                    keys.backspace then
 
                     values[field] =
                         values[field]:sub(
@@ -582,11 +735,8 @@ local function run(state)
                             -2
                         )
 
-                --------------------------------------------------
-                -- ENTER
-                --------------------------------------------------
-
-                elseif key == keys.enter then
+                elseif key ==
+                    keys.enter then
 
                     local value =
                         tonumber(
@@ -610,13 +760,19 @@ local function run(state)
                     else
 
                         local x =
-                            tonumber(values[1])
+                            tonumber(
+                                values[1]
+                            )
 
                         local y =
-                            tonumber(values[2])
+                            tonumber(
+                                values[2]
+                            )
 
                         local z =
-                            tonumber(values[3])
+                            tonumber(
+                                values[3]
+                            )
 
                         if x and y and z then
 
@@ -668,22 +824,16 @@ local function run(state)
                         return
                     end
 
-                --------------------------------------------------
-                -- CANCEL
-                --------------------------------------------------
-
-                elseif key == keys.r then
+                elseif key ==
+                    keys.r then
 
                     draw()
 
                     return
                 end
 
-            --------------------------------------------------
-            -- TERMINATE
-            --------------------------------------------------
-
-            elseif event == "terminate" then
+            elseif event ==
+                "terminate" then
 
                 state.system.running =
                     false
@@ -694,12 +844,57 @@ local function run(state)
     end
 
     --------------------------------------------------
-    -- MAIN DISPLAY LOOP
+    -- KEY HANDLER
     --------------------------------------------------
 
-    state.display.online = true
+    local function handleKey(
+        key
+    )
+
+        if key == keys.one then
+
+            page = 1
+
+        elseif key == keys.two then
+
+            page = 2
+
+        elseif key == keys.three then
+
+            page = 3
+
+        elseif key == keys.four then
+
+            page = 4
+
+        elseif key == keys.i then
+
+            targetInput()
+
+            return
+
+        elseif key == keys.r then
+
+            page = 1
+        end
+
+        draw()
+    end
+
+    --------------------------------------------------
+    -- DISPLAY PROCESS
+    --------------------------------------------------
+
+    state.display.online =
+        true
 
     draw()
+
+    --------------------------------------------------
+    -- IMPORTANT:
+    -- The display has its own refresh timer.
+    -- Keyboard input is handled by the same event loop.
+    --------------------------------------------------
 
     local timer =
         os.startTimer(0.1)
@@ -709,10 +904,6 @@ local function run(state)
         local event, value =
             os.pullEventRaw()
 
-        --------------------------------------------------
-        -- DISPLAY REFRESH
-        --------------------------------------------------
-
         if event == "timer"
             and value == timer then
 
@@ -721,45 +912,19 @@ local function run(state)
             timer =
                 os.startTimer(0.1)
 
-        --------------------------------------------------
-        -- KEYBOARD
-        --------------------------------------------------
-
         elseif event == "key" then
 
-            if value == keys.one then
+            handleKey(value)
 
-                page = 1
-                draw()
+        elseif event == "terminate" then
 
-            elseif value == keys.two then
-
-                page = 2
-                draw()
-
-            elseif value == keys.three then
-
-                page = 3
-                draw()
-
-            elseif value == keys.four then
-
-                page = 4
-                draw()
-
-            elseif value == keys.i then
-
-                targetInput()
-
-            elseif value == keys.r then
-
-                page = 1
-                draw()
-            end
+            state.system.running =
+                false
         end
     end
 
-    state.display.online = false
+    state.display.online =
+        false
 end
 
 return {
