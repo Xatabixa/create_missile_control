@@ -1,7 +1,21 @@
--- Navigation and flight sensor module
--- Create: Aeronautics / Create: Avionics
+-- Missile Navigation System
+-- Create: Avionics / Create: Aeronautics
 -- CC:Tweaked
--- Single-folder ComputerCraft compatible version
+--
+-- Position model:
+-- X/Y/Z are relative to the position where
+-- the navigation system starts.
+--
+-- X/Z are reconstructed by integrating velocity.
+-- Y is taken directly from Altitude Sensor.
+--
+-- Velocity sensors provide body-frame velocity.
+-- Navigation Table orientation is used to convert
+-- body-frame velocity into world-frame velocity.
+
+--------------------------------------------------
+-- PERIPHERALS
+--------------------------------------------------
 
 local navigationTable =
     peripheral.find("navigation_table")
@@ -41,17 +55,20 @@ for _, name in ipairs(peripheral.getNames()) do
                 if axis == "x"
                     and not velocitySensors.x then
 
-                    velocitySensors.x = sensor
+                    velocitySensors.x =
+                        sensor
 
                 elseif axis == "y"
                     and not velocitySensors.y then
 
-                    velocitySensors.y = sensor
+                    velocitySensors.y =
+                        sensor
 
                 elseif axis == "z"
                     and not velocitySensors.z then
 
-                    velocitySensors.z = sensor
+                    velocitySensors.z =
+                        sensor
                 end
             end
         end
@@ -60,42 +77,698 @@ end
 
 
 --------------------------------------------------
--- MAIN
+-- SAFE CALL
+--------------------------------------------------
+
+local function safeCall(
+    object,
+    method,
+    ...
+)
+
+    if not object then
+        return nil
+    end
+
+    local fn =
+        object[method]
+
+    if type(fn) ~= "function" then
+        return nil
+    end
+
+    local ok, a, b, c, d =
+        pcall(fn, ...)
+
+    if ok then
+        return a, b, c, d
+    end
+
+    return nil
+end
+
+
+--------------------------------------------------
+-- QUATERNION ROTATION
+--------------------------------------------------
+--
+-- Converts a body-frame vector into the
+-- world-frame using the navigation table
+-- orientation quaternion.
+--
+-- Quaternion:
+-- x, y, z, w
+--------------------------------------------------
+
+local function rotateVector(
+    x,
+    y,
+    z,
+    qx,
+    qy,
+    qz,
+    qw
+)
+
+    local tx =
+        2 * (
+            qy * z -
+            qz * y
+        )
+
+    local ty =
+        2 * (
+            qz * x -
+            qx * z
+        )
+
+    local tz =
+        2 * (
+            qx * y -
+            qy * x
+        )
+
+
+    local rx =
+        x +
+        qw * tx +
+        (
+            qy * tz -
+            qz * ty
+        )
+
+    local ry =
+        y +
+        qw * ty +
+        (
+            qz * tx -
+            qx * tz
+        )
+
+    local rz =
+        z +
+        qw * tz +
+        (
+            qx * ty -
+            qy * tx
+        )
+
+
+    return rx, ry, rz
+end
+
+
+--------------------------------------------------
+-- MODULE
 --------------------------------------------------
 
 local function run(state)
 
     --------------------------------------------------
-    -- SAFE PERIPHERAL CALL
+    -- MAKE SURE STATE TABLES EXIST
     --------------------------------------------------
 
-    local function safeCall(
-        object,
-        method,
-        ...
-    )
+    if not state.navigation then
+        state.navigation = {}
+    end
 
-        if not object then
-            return nil
+    if not state.navigation.position then
+
+        state.navigation.position = {
+            x = 0,
+            y = 0,
+            z = 0
+        }
+
+    end
+
+    if not state.navigation.velocity then
+
+        state.navigation.velocity = {
+            x = 0,
+            y = 0,
+            z = 0
+        }
+
+    end
+
+
+    --------------------------------------------------
+    -- INITIAL VALUES
+    --------------------------------------------------
+
+    state.navigation.online = false
+    state.navigation.status = "STARTING"
+
+    state.navigation.positionValid = false
+
+    state.navigation.gps = false
+
+    state.navigation.distance = 0
+    state.navigation.closureRate = 0
+
+    state.navigation.targetX = 0
+    state.navigation.targetY = 0
+    state.navigation.targetZ = 0
+
+    state.navigation.hasNavTarget = false
+
+
+    --------------------------------------------------
+    -- START POSITION
+    --------------------------------------------------
+
+    local startAltitude = 0
+
+    if altitudeSensor then
+
+        local altitude =
+            safeCall(
+                altitudeSensor,
+                "getHeight"
+            )
+
+        if type(altitude) == "number" then
+
+            startAltitude =
+                altitude
+
+        end
+    end
+
+
+    state.navigation.startPosition = {
+        x = 0,
+        y = startAltitude,
+        z = 0
+    }
+
+
+    state.navigation.position = {
+        x = 0,
+        y = 0,
+        z = 0
+    }
+
+
+    state.navigation.startAltitude =
+        startAltitude
+
+
+    --------------------------------------------------
+    -- TIMING
+    --------------------------------------------------
+
+    local lastTime =
+        os.clock()
+
+    local previousDistance = nil
+
+
+    --------------------------------------------------
+    -- SENSOR UPDATE
+    --------------------------------------------------
+
+    local function updateSensors()
+
+        --------------------------------------------------
+        -- ALTITUDE
+        --------------------------------------------------
+
+        if altitudeSensor then
+
+            state.navigation.altitudeSensor =
+                true
+
+            local altitude =
+                safeCall(
+                    altitudeSensor,
+                    "getHeight"
+                )
+
+            if type(altitude) == "number" then
+
+                state.navigation.altitude =
+                    altitude
+
+                state.navigation.position.y =
+                    altitude -
+                    state.navigation.startAltitude
+
+            end
+
+
+            local verticalSpeed =
+                safeCall(
+                    altitudeSensor,
+                    "getVerticalSpeed"
+                )
+
+            if type(verticalSpeed) == "number" then
+
+                state.navigation.verticalSpeed =
+                    verticalSpeed
+
+            end
+
+
+            local pressure =
+                safeCall(
+                    altitudeSensor,
+                    "getAirPressure"
+                )
+
+            if type(pressure) == "number" then
+
+                state.navigation.airPressure =
+                    pressure
+
+            end
+
+        else
+
+            state.navigation.altitudeSensor =
+                false
+
         end
 
-        local fn = object[method]
 
-        if type(fn) ~= "function" then
-            return nil
+        --------------------------------------------------
+        -- VELOCITY
+        --------------------------------------------------
+
+        local bodyVX = 0
+        local bodyVY = 0
+        local bodyVZ = 0
+
+        local hasVelocity =
+            false
+
+
+        if velocitySensors.x then
+
+            local value =
+                safeCall(
+                    velocitySensors.x,
+                    "getVelocity"
+                )
+
+            if type(value) == "number" then
+
+                bodyVX = value
+                hasVelocity = true
+
+            end
         end
 
-        local ok, a, b, c, d =
-            pcall(fn, ...)
 
-        if ok then
-            return a, b, c, d
+        if velocitySensors.y then
+
+            local value =
+                safeCall(
+                    velocitySensors.y,
+                    "getVelocity"
+                )
+
+            if type(value) == "number" then
+
+                bodyVY = value
+                hasVelocity = true
+
+            end
         end
 
-        state.navigation.error =
-            tostring(b or a)
 
-        return nil
+        if velocitySensors.z then
+
+            local value =
+                safeCall(
+                    velocitySensors.z,
+                    "getVelocity"
+                )
+
+            if type(value) == "number" then
+
+                bodyVZ = value
+                hasVelocity = true
+
+            end
+        end
+
+
+        state.navigation.velocitySensorX =
+            velocitySensors.x ~= nil
+
+        state.navigation.velocitySensorY =
+            velocitySensors.y ~= nil
+
+        state.navigation.velocitySensorZ =
+            velocitySensors.z ~= nil
+
+
+        --------------------------------------------------
+        -- ORIENTATION
+        --------------------------------------------------
+
+        local qx = 0
+        local qy = 0
+        local qz = 0
+        local qw = 1
+
+        local orientationValid =
+            false
+
+
+        if navigationTable then
+
+            local orientation =
+                safeCall(
+                    navigationTable,
+                    "getOrientation"
+                )
+
+            if type(orientation) == "table" then
+
+                qx =
+                    tonumber(orientation[1])
+                    or 0
+
+                qy =
+                    tonumber(orientation[2])
+                    or 0
+
+                qz =
+                    tonumber(orientation[3])
+                    or 0
+
+                qw =
+                    tonumber(orientation[4])
+                    or 1
+
+                orientationValid =
+                    true
+
+            end
+
+        end
+
+
+        --------------------------------------------------
+        -- BODY -> WORLD VELOCITY
+        --------------------------------------------------
+
+        local worldVX =
+            bodyVX
+
+        local worldVY =
+            bodyVY
+
+        local worldVZ =
+            bodyVZ
+
+
+        if orientationValid then
+
+            worldVX,
+            worldVY,
+            worldVZ =
+                rotateVector(
+                    bodyVX,
+                    bodyVY,
+                    bodyVZ,
+                    qx,
+                    qy,
+                    qz,
+                    qw
+                )
+
+        end
+
+
+        --------------------------------------------------
+        -- VELOCITY STATE
+        --------------------------------------------------
+
+        state.navigation.velocity.x =
+            worldVX
+
+        state.navigation.velocity.y =
+            worldVY
+
+        state.navigation.velocity.z =
+            worldVZ
+
+
+        state.navigation.speed =
+            math.sqrt(
+                worldVX * worldVX +
+                worldVY * worldVY +
+                worldVZ * worldVZ
+            )
+
+
+        --------------------------------------------------
+        -- POSITION INTEGRATION
+        --------------------------------------------------
+
+        local now =
+            os.clock()
+
+        local dt =
+            now - lastTime
+
+        lastTime =
+            now
+
+
+        -- Prevent huge jumps after lag
+        if dt > 0 and dt < 0.5 then
+
+            state.navigation.position.x =
+                state.navigation.position.x +
+                worldVX * dt
+
+            state.navigation.position.z =
+                state.navigation.position.z +
+                worldVZ * dt
+
+        end
+
+
+        --------------------------------------------------
+        -- VALID POSITION
+        --------------------------------------------------
+
+        state.navigation.positionValid =
+            hasVelocity
+            or altitudeSensor ~= nil
+
+    end
+
+
+    --------------------------------------------------
+    -- MANUAL TARGET
+    --------------------------------------------------
+
+    local function updateTarget()
+
+        local target =
+            state.target
+
+
+        if type(target) ~= "table"
+            or target.set ~= true then
+
+            state.navigation.hasNavTarget =
+                false
+
+            return
+
+        end
+
+
+        local tx =
+            tonumber(target.x)
+
+        local ty =
+            tonumber(target.y)
+
+        local tz =
+            tonumber(target.z)
+
+
+        if not tx
+            or not ty
+            or not tz then
+
+            state.navigation.hasNavTarget =
+                false
+
+            return
+
+        end
+
+
+        state.navigation.targetX =
+            tx
+
+        state.navigation.targetY =
+            ty
+
+        state.navigation.targetZ =
+            tz
+
+
+        state.navigation.hasNavTarget =
+            true
+
+    end
+
+
+    --------------------------------------------------
+    -- DISTANCE
+    --------------------------------------------------
+
+    local function updateDistance()
+
+        if not state.navigation.hasNavTarget then
+
+            state.navigation.distance =
+                0
+
+            state.navigation.closureRate =
+                0
+
+            previousDistance =
+                nil
+
+            return
+
+        end
+
+
+        local px =
+            state.navigation.position.x
+
+        local py =
+            state.navigation.position.y
+
+        local pz =
+            state.navigation.position.z
+
+
+        local tx =
+            state.navigation.targetX
+
+        local ty =
+            state.navigation.targetY
+
+        local tz =
+            state.navigation.targetZ
+
+
+        local dx =
+            tx - px
+
+        local dy =
+            ty - py
+
+        local dz =
+            tz - pz
+
+
+        local distance =
+            math.sqrt(
+                dx * dx +
+                dy * dy +
+                dz * dz
+            )
+
+
+        state.navigation.distance =
+            distance
+
+
+        --------------------------------------------------
+        -- CLOSURE RATE
+        --------------------------------------------------
+
+        local now =
+            os.clock()
+
+
+        if previousDistance then
+
+            local dt =
+                now - previousDistance.time
+
+            if dt > 0 then
+
+                state.navigation.closureRate =
+                    (
+                        previousDistance.distance -
+                        distance
+                    ) / dt
+
+            end
+        end
+
+
+        previousDistance = {
+            distance = distance,
+            time = now
+        }
+
+
+        --------------------------------------------------
+        -- TARGET VECTOR
+        --------------------------------------------------
+
+        state.navigation.targetDeltaX =
+            dx
+
+        state.navigation.targetDeltaY =
+            dy
+
+        state.navigation.targetDeltaZ =
+            dz
+
+
+        --------------------------------------------------
+        -- ELEVATION
+        --------------------------------------------------
+
+        state.navigation.elevation =
+            dy
+
+
+        --------------------------------------------------
+        -- SIMPLE WORLD BEARING
+        --------------------------------------------------
+
+        local horizontalDistance =
+            math.sqrt(
+                dx * dx +
+                dz * dz
+            )
+
+
+        if horizontalDistance >
+            0.001 then
+
+            state.navigation.bearing =
+                math.atan(
+                    dx,
+                    dz
+                )
+
+        else
+
+            state.navigation.bearing =
+                0
+
+        end
+
     end
 
 
@@ -111,13 +784,17 @@ local function run(state)
                 false
 
             return
+
         end
+
 
         state.navigation.navigationTable =
             true
 
 
-        -- Target available
+        --------------------------------------------------
+        -- REAL NAV TABLE TARGET
+        --------------------------------------------------
 
         local hasTarget =
             safeCall(
@@ -125,89 +802,42 @@ local function run(state)
                 "hasTarget"
             )
 
-        if hasTarget ~= nil then
 
-            state.navigation.hasNavTarget =
-                hasTarget
+        if hasTarget then
+
+            local bearing =
+                safeCall(
+                    navigationTable,
+                    "getBearingRad"
+                )
+
+            if type(bearing) == "number" then
+
+                state.navigation.navTableBearing =
+                    bearing
+
+            end
+
+
+            local closure =
+                safeCall(
+                    navigationTable,
+                    "getClosureRate"
+                )
+
+            if type(closure) == "number" then
+
+                state.navigation.navTableClosureRate =
+                    closure
+
+            end
+
         end
 
 
-        -- Bearing
-
-        local bearing =
-            safeCall(
-                navigationTable,
-                "getBearingRad"
-            )
-
-        if bearing ~= nil then
-
-            state.navigation.bearing =
-                bearing
-        end
-
-
-        -- Relative angle
-
-        local relativeAngle =
-            safeCall(
-                navigationTable,
-                "getRelativeAngleRad"
-            )
-
-        if relativeAngle ~= nil then
-
-            state.navigation.relativeAngle =
-                relativeAngle
-        end
-
-
-        -- Vertical offset
-
-        local elevation =
-            safeCall(
-                navigationTable,
-                "getVerticalOffsetToTarget"
-            )
-
-        if elevation ~= nil then
-
-            state.navigation.elevation =
-                elevation
-        end
-
-
-        -- Distance
-
-        local distance =
-            safeCall(
-                navigationTable,
-                "getDistanceToTarget"
-            )
-
-        if distance ~= nil then
-
-            state.navigation.distance =
-                distance
-        end
-
-
-        -- Closure rate
-
-        local closureRate =
-            safeCall(
-                navigationTable,
-                "getClosureRate"
-            )
-
-        if closureRate ~= nil then
-
-            state.navigation.closureRate =
-                closureRate
-        end
-
-
-        -- Heading
+        --------------------------------------------------
+        -- HEADING
+        --------------------------------------------------
 
         local heading =
             safeCall(
@@ -215,186 +845,19 @@ local function run(state)
                 "getHeadingRad"
             )
 
-        if heading ~= nil then
+
+        if type(heading) == "number" then
 
             state.navigation.heading =
                 heading
+
         end
+
     end
 
 
     --------------------------------------------------
-    -- MANUAL TARGET
-    --------------------------------------------------
-
-    local function updateLocalTarget()
-
-        local target =
-            state.target
-
-        if type(target) ~= "table"
-            or target.set ~= true then
-
-            return
-        end
-
-
-        state.navigation.hasNavTarget =
-            true
-
-
-        state.navigation.targetX =
-            tonumber(target.x) or 0
-
-        state.navigation.targetY =
-            tonumber(target.y) or 0
-
-        state.navigation.targetZ =
-            tonumber(target.z) or 0
-    end
-
-
-    --------------------------------------------------
-    -- ALTITUDE SENSOR
-    --------------------------------------------------
-
-    local function updateAltitude()
-
-        if not altitudeSensor then
-
-            state.navigation.altitudeSensor =
-                false
-
-            return
-        end
-
-        state.navigation.altitudeSensor =
-            true
-
-
-        -- Height
-
-        local height =
-            safeCall(
-                altitudeSensor,
-                "getHeight"
-            )
-
-        if height ~= nil then
-
-            state.navigation.altitude =
-                height
-        end
-
-
-        -- Vertical speed
-
-        local verticalSpeed =
-            safeCall(
-                altitudeSensor,
-                "getVerticalSpeed"
-            )
-
-        if verticalSpeed ~= nil then
-
-            state.navigation.verticalSpeed =
-                verticalSpeed
-        end
-
-
-        -- Air pressure
-
-        local pressure =
-            safeCall(
-                altitudeSensor,
-                "getAirPressure"
-            )
-
-        if pressure ~= nil then
-
-            state.navigation.airPressure =
-                pressure
-        end
-    end
-
-
-    --------------------------------------------------
-    -- VELOCITY SENSORS
-    --------------------------------------------------
-
-    local function updateVelocity()
-
-        local vx =
-            safeCall(
-                velocitySensors.x,
-                "getVelocity"
-            )
-
-        local vy =
-            safeCall(
-                velocitySensors.y,
-                "getVelocity"
-            )
-
-        local vz =
-            safeCall(
-                velocitySensors.z,
-                "getVelocity"
-            )
-
-
-        state.navigation.velocitySensorX =
-            velocitySensors.x ~= nil
-
-        state.navigation.velocitySensorY =
-            velocitySensors.y ~= nil
-
-        state.navigation.velocitySensorZ =
-            velocitySensors.z ~= nil
-
-
-        if vx ~= nil then
-
-            state.navigation.velocity.x =
-                vx
-        end
-
-
-        if vy ~= nil then
-
-            state.navigation.velocity.y =
-                vy
-        end
-
-
-        if vz ~= nil then
-
-            state.navigation.velocity.z =
-                vz
-        end
-
-
-        local x =
-            state.navigation.velocity.x or 0
-
-        local y =
-            state.navigation.velocity.y or 0
-
-        local z =
-            state.navigation.velocity.z or 0
-
-
-        state.navigation.speed =
-            math.sqrt(
-                x * x +
-                y * y +
-                z * z
-            )
-    end
-
-
-    --------------------------------------------------
-    -- GIMBAL SENSOR
+    -- GIMBAL
     --------------------------------------------------
 
     local function updateGimbal()
@@ -405,13 +868,13 @@ local function run(state)
                 false
 
             return
+
         end
+
 
         state.navigation.gimbalSensor =
             true
 
-
-        -- Angles
 
         local angles =
             safeCall(
@@ -419,17 +882,19 @@ local function run(state)
                 "getAnglesRad"
             )
 
+
         if type(angles) == "table" then
 
             state.navigation.pitch =
-                angles[1] or 0
+                tonumber(angles[1])
+                or 0
 
             state.navigation.roll =
-                angles[2] or 0
+                tonumber(angles[2])
+                or 0
+
         end
 
-
-        -- Angular rates
 
         local rates =
             safeCall(
@@ -437,20 +902,23 @@ local function run(state)
                 "getAngularRatesRad"
             )
 
+
         if type(rates) == "table" then
 
             state.navigation.angularRateX =
-                rates[1] or 0
+                tonumber(rates[1])
+                or 0
 
             state.navigation.angularRateY =
-                rates[2] or 0
+                tonumber(rates[2])
+                or 0
 
             state.navigation.angularRateZ =
-                rates[3] or 0
+                tonumber(rates[3])
+                or 0
+
         end
 
-
-        -- Gravity vector
 
         local gravity =
             safeCall(
@@ -458,16 +926,20 @@ local function run(state)
                 "getGravity"
             )
 
+
         if type(gravity) == "table" then
 
             state.navigation.gravityX =
-                gravity[1] or 0
+                tonumber(gravity[1])
+                or 0
 
             state.navigation.gravityY =
-                gravity[2] or 0
+                tonumber(gravity[2])
+                or 0
 
             state.navigation.gravityZ =
-                gravity[3] or 0
+                tonumber(gravity[3])
+                or 0
 
 
             local gx =
@@ -486,10 +958,9 @@ local function run(state)
                     gy * gy +
                     gz * gz
                 )
+
         end
 
-
-        -- Linear acceleration
 
         local acceleration =
             safeCall(
@@ -497,22 +968,28 @@ local function run(state)
                 "getLinearAcceleration"
             )
 
+
         if type(acceleration) == "table" then
 
             state.navigation.accelerationX =
-                acceleration[1] or 0
+                tonumber(acceleration[1])
+                or 0
 
             state.navigation.accelerationY =
-                acceleration[2] or 0
+                tonumber(acceleration[2])
+                or 0
 
             state.navigation.accelerationZ =
-                acceleration[3] or 0
+                tonumber(acceleration[3])
+                or 0
+
         end
+
     end
 
 
     --------------------------------------------------
-    -- SYSTEM STATUS
+    -- STATUS
     --------------------------------------------------
 
     local function updateStatus()
@@ -539,11 +1016,13 @@ local function run(state)
 
             state.navigation.status =
                 "OFFLINE"
+
         end
 
 
         state.navigation.lastUpdate =
             os.clock()
+
     end
 
 
@@ -559,18 +1038,19 @@ local function run(state)
 
         updateStatus()
 
+        updateSensors()
+
+        updateTarget()
+
+        updateDistance()
+
         updateNavigationTable()
-
-        updateLocalTarget()
-
-        updateAltitude()
-
-        updateVelocity()
 
         updateGimbal()
 
 
         sleep(0.05)
+
     end
 
 
@@ -583,6 +1063,7 @@ local function run(state)
 
     state.navigation.status =
         "OFFLINE"
+
 end
 
 
