@@ -1,6 +1,7 @@
 -- Impact point configuration
 
-local state = require("state")
+local state =
+    require("state")
 
 term.clear()
 term.setCursorPos(1, 1)
@@ -23,28 +24,36 @@ if not x or not y or not z then
 
     print("")
     print("ERROR: Invalid coordinates.")
+
     sleep(2)
 
     return
 end
 
-state.target.x = x
-state.target.y = y
-state.target.z = z
+--------------------------------------------------
+-- SAVE IMPACT POINT
+--------------------------------------------------
 
-state.target.set = true
+state.impactPoint.x = x
+state.impactPoint.y = y
+state.impactPoint.z = z
+
+state.impactPoint.set = true
+
+--------------------------------------------------
+-- DISPLAY RESULT
+--------------------------------------------------
 
 term.clear()
 term.setCursorPos(1, 1)
 
 print("=== IMPACT POINT ===")
 print("")
-
 print("Coordinates set:")
+print("")
 print("X: " .. x)
 print("Y: " .. y)
 print("Z: " .. z)
-
 print("")
 print("Impact point is READY.")
 

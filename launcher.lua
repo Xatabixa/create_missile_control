@@ -1,12 +1,36 @@
 -- Missile Control System Launcher
--- Runs all modules in the same environment.
--- Module errors are reported instead of being silently hidden.
+-- Uses the directory of launcher.lua as the module directory.
+
+--------------------------------------------------
+-- FIND LAUNCHER DIRECTORY
+--------------------------------------------------
+
+local programPath =
+    shell.getRunningProgram()
+
+local baseDir =
+    fs.getDir(programPath)
+
+if baseDir == "" then
+    baseDir = "/"
+end
+
+if string.sub(baseDir, 1, 1) ~= "/" then
+    baseDir = "/" .. baseDir
+end
+
+--------------------------------------------------
+-- USE ROCKET DIRECTORY
+--------------------------------------------------
+
+shell.setDir(baseDir)
 
 --------------------------------------------------
 -- LOAD SHARED STATE
 --------------------------------------------------
 
-local state = require("state")
+local state =
+    require("state")
 
 state.system.running = true
 state.system.mode = "DRY TEST"
@@ -18,14 +42,26 @@ state.system.status = "STARTING"
 
 local function loadModule(filename)
 
+    local path =
+        fs.combine(baseDir, filename)
+
+    if not fs.exists(path) then
+
+        error(
+            "MODULE NOT FOUND: " ..
+            path
+        )
+
+    end
+
     local chunk, errorMessage =
-        loadfile(filename)
+        loadfile(path)
 
     if not chunk then
 
         error(
             "LOAD ERROR [" ..
-            filename ..
+            path ..
             "]: " ..
             tostring(errorMessage)
         )
@@ -33,60 +69,32 @@ local function loadModule(filename)
     end
 
     return chunk
-
 end
 
 --------------------------------------------------
--- MODULES
+-- LOAD MODULES
 --------------------------------------------------
 
-local modules = {
+local navigation =
+    loadModule("navigation.lua")
 
-    {
-        name = "NAVIGATION",
-        file = "navigation.lua"
-    },
+local guidance =
+    loadModule("guidance.lua")
 
-    {
-        name = "GUIDANCE",
-        file = "guidance.lua"
-    },
+local actuator =
+    loadModule("actuator.lua")
 
-    {
-        name = "THRUSTER",
-        file = "actuator.lua"
-    },
-
-    {
-        name = "DISPLAY",
-        file = "display.lua"
-    }
-
-}
-
---------------------------------------------------
--- LOAD ALL MODULES
---------------------------------------------------
-
-local loaded = {}
-
-for _, module in ipairs(modules) do
-
-    loaded[module.name] =
-        loadModule(module.file)
-
-end
+local display =
+    loadModule("display.lua")
 
 --------------------------------------------------
 -- RUN MODULE
 --------------------------------------------------
 
-local function runModule(name)
+local function runModule(name, module)
 
     local ok, errorMessage =
-        pcall(
-            loaded[name]
-        )
+        pcall(module)
 
     if not ok then
 
@@ -104,7 +112,6 @@ local function runModule(name)
         state.system.running = false
 
     end
-
 end
 
 --------------------------------------------------
@@ -116,19 +123,31 @@ state.system.status = "ONLINE"
 parallel.waitForAny(
 
     function()
-        runModule("NAVIGATION")
+        runModule(
+            "NAVIGATION",
+            navigation
+        )
     end,
 
     function()
-        runModule("GUIDANCE")
+        runModule(
+            "GUIDANCE",
+            guidance
+        )
     end,
 
     function()
-        runModule("THRUSTER")
+        runModule(
+            "THRUSTER",
+            actuator
+        )
     end,
 
     function()
-        runModule("DISPLAY")
+        runModule(
+            "DISPLAY",
+            display
+        )
     end
 
 )
