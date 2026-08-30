@@ -1,18 +1,81 @@
--- Guidance system test
--- Tests the real guidance and actuator modules.
--- Engine thrust is NOT controlled by this test.
+-- Guidance and vector actuator test
+-- Does not modify the main missile control files.
+-- Engine thrust is NOT controlled.
 
-local state = require("state")
-local guidance = require("guidance")
-local actuator = require("actuator")
+local state = dofile("state.lua")
 
-state.system.running = true
-state.system.mode = "GUIDANCE TEST"
-state.system.status = "ONLINE"
+local thruster = peripheral.find("vector_thruster")
+    or peripheral.find("liquid_vector_thruster")
 
--- Enable navigation input manually.
-state.navigation.online = true
-state.navigation.status = "ONLINE"
+if not thruster then
+    term.clear()
+    term.setCursorPos(1, 1)
+
+    print("GUIDANCE TEST")
+    print("")
+    print("ERROR: vector thruster not found")
+    return
+end
+
+local MAX_VECTOR = 0.25
+local BEARING_GAIN = 1.0
+local ELEVATION_GAIN = 0.05
+local DEADZONE = math.rad(0.5)
+
+local function clamp(value, minimum, maximum)
+    if value < minimum then
+        return minimum
+    end
+
+    if value > maximum then
+        return maximum
+    end
+
+    return value
+end
+
+local function calculateGuidance()
+    local bearing = state.navigation.bearing or 0
+    local elevation = state.navigation.elevation or 0
+
+    local commandY = 0
+    local commandX = 0
+
+    if math.abs(bearing) > DEADZONE then
+        commandY = bearing * BEARING_GAIN
+    end
+
+    if math.abs(elevation) > 0.5 then
+        commandX = elevation * ELEVATION_GAIN
+    end
+
+    commandX = clamp(commandX, -MAX_VECTOR, MAX_VECTOR)
+    commandY = clamp(commandY, -MAX_VECTOR, MAX_VECTOR)
+
+    state.guidance.commandX = commandX
+    state.guidance.commandY = commandY
+    state.guidance.yawError = bearing
+    state.guidance.pitchError = elevation
+
+    return commandX, commandY
+end
+
+local function applyVector()
+    local x = state.guidance.commandX or 0
+    local y = state.guidance.commandY or 0
+
+    pcall(thruster.setVector, x, y)
+end
+
+local function get(method)
+    local ok, value = pcall(method)
+
+    if ok and value ~= nil then
+        return value
+    end
+
+    return nil
+end
 
 local function fmt(value)
     if value == nil then
@@ -20,12 +83,6 @@ local function fmt(value)
     end
 
     return string.format("% .4f", value)
-end
-
-local function setInput(bearing, elevation, target)
-    state.navigation.bearing = bearing
-    state.navigation.elevation = elevation
-    state.navigation.hasNavTarget = target
 end
 
 local function draw()
@@ -37,31 +94,27 @@ local function draw()
     print("================================")
     print("")
 
-    print("NAVIGATION INPUT")
+    print("INPUT")
     print("Bearing   : " .. fmt(state.navigation.bearing))
     print("Elevation : " .. fmt(state.navigation.elevation))
     print("Target    : " ..
         (state.navigation.hasNavTarget and "YES" or "NO"))
     print("")
 
-    print("GUIDANCE")
-    print("Status    : " .. tostring(state.guidance.status))
-    print("Active    : " ..
-        (state.guidance.active and "YES" or "NO"))
+    print("GUIDANCE COMMAND")
     print("Command X : " .. fmt(state.guidance.commandX))
     print("Command Y : " .. fmt(state.guidance.commandY))
     print("")
 
     print("THRUSTER")
-    print("Status    : " .. tostring(state.thruster.status))
-    print("Vector X  : " .. fmt(state.thruster.vectorX))
-    print("Vector Y  : " .. fmt(state.thruster.vectorY))
-    print("Target X  : " .. fmt(state.thruster.targetVectorX))
-    print("Target Y  : " .. fmt(state.thruster.targetVectorY))
+    print("Actual X  : " .. fmt(get(thruster.getVectorX)))
+    print("Actual Y  : " .. fmt(get(thruster.getVectorY)))
+    print("Target X  : " .. fmt(get(thruster.getTargetVectorX)))
+    print("Target Y  : " .. fmt(get(thruster.getTargetVectorY)))
     print("")
 
     print("--------------------------------")
-    print("ENTER - Manual input")
+    print("ENTER - Set navigation values")
     print("R     - Reset")
     print("Q     - Quit")
     print("--------------------------------")
@@ -70,10 +123,9 @@ end
 local function readNumber(prompt)
     term.write(prompt)
 
-    local input = read()
-    local value = tonumber(input)
+    local value = tonumber(read())
 
-    if not value then
+    if value == nil then
         print("Invalid number.")
         sleep(1)
         return nil
@@ -87,12 +139,12 @@ local function manualInput()
     term.setCursorPos(1, 1)
 
     print("================================")
-    print("       MANUAL GUIDANCE TEST")
+    print("       NAVIGATION INPUT")
     print("================================")
     print("")
 
-    print("Bearing is an angle in radians.")
-    print("Elevation is a signed vertical offset.")
+    print("Bearing: radians")
+    print("Elevation: blocks")
     print("")
 
     local bearing = readNumber("Bearing: ")
@@ -107,78 +159,66 @@ local function manualInput()
         return
     end
 
-    local target = readNumber("Target (1=yes, 0=no): ")
+    local target = readNumber("Target (1/0): ")
 
     if target == nil then
         return
     end
 
-    setInput(
-        bearing,
-        elevation,
-        target == 1
-    )
+    state.navigation.bearing = bearing
+    state.navigation.elevation = elevation
+    state.navigation.hasNavTarget = target == 1
 
-    sleep(0.2)
+    calculateGuidance()
+    applyVector()
 end
 
-local function guidanceTask()
-    local ok, err = pcall(guidance.run)
-
-    if not ok then
-        state.system.error = "GUIDANCE: " .. tostring(err)
-        state.system.running = false
-    end
-end
-
-local function actuatorTask()
-    local ok, err = pcall(actuator.run)
-
-    if not ok then
-        state.system.error = "ACTUATOR: " .. tostring(err)
-        state.system.running = false
-    end
-end
-
-parallel.waitForAny(
-    guidanceTask,
-    actuatorTask,
-    function()
-        while state.system.running do
-            draw()
-
-            local event, key = os.pullEvent("key")
-
-            if key == keys.q then
-                state.system.running = false
-                break
-            end
-
-            if key == keys.r then
-                setInput(0, 0, false)
-            end
-
-            if key == keys.enter then
-                manualInput()
-            end
-        end
-    end
-)
-
--- Safety shutdown.
-state.system.running = false
-
-state.navigation.online = false
+-- Initial state
+state.navigation.online = true
+state.navigation.status = "ONLINE"
 state.navigation.hasNavTarget = false
+
+state.guidance.online = true
+state.guidance.status = "ONLINE"
 
 state.guidance.commandX = 0
 state.guidance.commandY = 0
+
+pcall(thruster.setVector, 0, 0)
+
+while true do
+    calculateGuidance()
+    applyVector()
+    draw()
+
+    local event, key = os.pullEvent("key")
+
+    if key == keys.q then
+        break
+    end
+
+    if key == keys.r then
+        state.navigation.bearing = 0
+        state.navigation.elevation = 0
+        state.navigation.hasNavTarget = false
+
+        state.guidance.commandX = 0
+        state.guidance.commandY = 0
+
+        pcall(thruster.setVector, 0, 0)
+    end
+
+    if key == keys.enter then
+        manualInput()
+    end
+end
+
+-- Safety shutdown
+pcall(thruster.setVector, 0, 0)
 
 term.clear()
 term.setCursorPos(1, 1)
 
 print("GUIDANCE TEST STOPPED")
 print("")
-print("Vector command reset to:")
-print("X: 0.0000")
-print("Y: 0.0000")
+print("Vector returned to 0, 0")
