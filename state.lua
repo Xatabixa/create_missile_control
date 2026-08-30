@@ -1,15 +1,15 @@
--- Shared missile control state
+-- Shared missile control system state
 
 local state = {
 
     system = {
         running = true,
         mode = "DRY TEST",
-        status = "INITIALIZING"
+        status = "STARTING"
     },
 
-    -- The missile has an impact point, not a target.
-    impactPoint = {
+    -- Impact point selected by the operator.
+    target = {
         x = 0,
         y = 0,
         z = 0,
@@ -21,18 +21,38 @@ local state = {
         online = false,
         status = "OFFLINE",
 
-        bearing = 0,
+        hasTarget = false,
+
+        position = {
+            x = 0,
+            y = 0,
+            z = 0
+        },
+
+        velocity = {
+            x = 0,
+            y = 0,
+            z = 0
+        },
+
+        acceleration = {
+            x = 0,
+            y = 0,
+            z = 0
+        },
+
+        gravity = 0,
+
         heading = 0,
+        bearing = 0,
         relativeAngle = 0,
 
-        verticalOffset = 0,
+        elevation = 0,
         distance = 0,
         closureRate = 0,
 
-        orientation = nil,
-
-        lastUpdate = 0,
-        updateCount = 0
+        updateCount = 0,
+        lastUpdate = 0
     },
 
     guidance = {
@@ -43,8 +63,8 @@ local state = {
         commandX = 0,
         commandY = 0,
 
-        lastUpdate = 0,
-        updateCount = 0
+        updateCount = 0,
+        lastUpdate = 0
     },
 
     thruster = {
@@ -61,8 +81,8 @@ local state = {
         targetVectorX = 0,
         targetVectorY = 0,
 
-        lastUpdate = 0,
-        updateCount = 0
+        updateCount = 0,
+        lastUpdate = 0
     }
 }
 

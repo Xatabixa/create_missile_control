@@ -1,4 +1,5 @@
--- Navigation telemetry module
+-- Navigation module
+-- Reads telemetry from the Navigation Table.
 
 local state = require("state")
 
@@ -22,20 +23,22 @@ if not navigation then
 end
 
 state.navigation.online = true
-state.navigation.status = "WAITING"
+state.navigation.status = "ONLINE"
 
 --------------------------------------------------
 -- SAFE CALL
 --------------------------------------------------
 
-local function call(method)
+local function safeCall(method)
 
     if not navigation[method] then
         return nil
     end
 
     local ok, result =
-        pcall(navigation[method])
+        pcall(
+            navigation[method]
+        )
 
     if not ok then
         return nil
@@ -50,18 +53,32 @@ end
 
 local function update()
 
-    local dataReceived = false
+    --------------------------------------------------
+    -- TARGET STATUS
+    --------------------------------------------------
+
+    local hasTarget =
+        safeCall("hasTarget")
+
+    if hasTarget ~= nil then
+
+        state.navigation.hasTarget =
+            hasTarget
+
+    end
 
     --------------------------------------------------
     -- BEARING
     --------------------------------------------------
 
     local bearing =
-        call("getBearingRad")
+        safeCall("getBearingRad")
 
     if bearing == nil then
+
         bearing =
-            call("getBearing")
+            safeCall("getBearing")
+
     end
 
     if bearing ~= nil then
@@ -69,62 +86,22 @@ local function update()
         state.navigation.bearing =
             bearing
 
-        dataReceived = true
-    end
-
-    --------------------------------------------------
-    -- HEADING
-    --------------------------------------------------
-
-    local heading =
-        call("getHeadingRad")
-
-    if heading == nil then
-        heading =
-            call("getHeading")
-    end
-
-    if heading ~= nil then
-
-        state.navigation.heading =
-            heading
-
-        dataReceived = true
-    end
-
-    --------------------------------------------------
-    -- RELATIVE ANGLE
-    --------------------------------------------------
-
-    local relative =
-        call("getRelativeAngleRad")
-
-    if relative == nil then
-        relative =
-            call("getRelativeAngle")
-    end
-
-    if relative ~= nil then
-
-        state.navigation.relativeAngle =
-            relative
-
-        dataReceived = true
     end
 
     --------------------------------------------------
     -- VERTICAL OFFSET
     --------------------------------------------------
 
-    local vertical =
-        call("getVerticalOffsetToTarget")
+    local elevation =
+        safeCall(
+            "getVerticalOffsetToTarget"
+        )
 
-    if vertical ~= nil then
+    if elevation ~= nil then
 
-        state.navigation.verticalOffset =
-            vertical
+        state.navigation.elevation =
+            elevation
 
-        dataReceived = true
     end
 
     --------------------------------------------------
@@ -132,14 +109,15 @@ local function update()
     --------------------------------------------------
 
     local distance =
-        call("getDistanceToTarget")
+        safeCall(
+            "getDistanceToTarget"
+        )
 
     if distance ~= nil then
 
         state.navigation.distance =
             distance
 
-        dataReceived = true
     end
 
     --------------------------------------------------
@@ -147,29 +125,59 @@ local function update()
     --------------------------------------------------
 
     local closure =
-        call("getClosureRate")
+        safeCall("getClosureRate")
 
     if closure ~= nil then
 
         state.navigation.closureRate =
             closure
 
-        dataReceived = true
     end
 
     --------------------------------------------------
-    -- ORIENTATION
+    -- HEADING
     --------------------------------------------------
 
-    local orientation =
-        call("getOrientation")
+    local heading =
+        safeCall("getHeadingRad")
 
-    if orientation ~= nil then
+    if heading == nil then
 
-        state.navigation.orientation =
-            orientation
+        heading =
+            safeCall("getHeading")
 
-        dataReceived = true
+    end
+
+    if heading ~= nil then
+
+        state.navigation.heading =
+            heading
+
+    end
+
+    --------------------------------------------------
+    -- RELATIVE ANGLE
+    --------------------------------------------------
+
+    local relativeAngle =
+        safeCall(
+            "getRelativeAngleRad"
+        )
+
+    if relativeAngle == nil then
+
+        relativeAngle =
+            safeCall(
+                "getRelativeAngle"
+            )
+
+    end
+
+    if relativeAngle ~= nil then
+
+        state.navigation.relativeAngle =
+            relativeAngle
+
     end
 
     --------------------------------------------------
@@ -177,18 +185,14 @@ local function update()
     --------------------------------------------------
 
     state.navigation.online = true
+    state.navigation.status = "ONLINE"
 
-    if dataReceived then
-        state.navigation.status = "ONLINE"
-    else
-        state.navigation.status = "WAITING"
-    end
+    state.navigation.updateCount =
+        state.navigation.updateCount + 1
 
     state.navigation.lastUpdate =
         os.clock()
 
-    state.navigation.updateCount =
-        state.navigation.updateCount + 1
 end
 
 --------------------------------------------------
@@ -200,6 +204,7 @@ while state.system.running do
     update()
 
     sleep(0.05)
+
 end
 
 state.navigation.online = false

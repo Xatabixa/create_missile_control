@@ -1,6 +1,6 @@
 -- Liquid Vector Thruster actuator
--- Reads real thruster telemetry.
--- Does not control the thruster during DRY TEST.
+-- DRY TEST mode only reads telemetry.
+-- No steering command is sent to the thruster.
 
 local state = require("state")
 
@@ -24,7 +24,7 @@ if not thruster then
 end
 
 state.thruster.online = true
-state.thruster.status = "DRY TEST"
+state.thruster.status = "ONLINE"
 
 --------------------------------------------------
 -- SAFE CALL
@@ -37,7 +37,9 @@ local function call(method)
     end
 
     local ok, result =
-        pcall(thruster[method])
+        pcall(
+            thruster[method]
+        )
 
     if not ok then
         return nil
@@ -60,8 +62,10 @@ local function update()
         call("getPower")
 
     if power ~= nil then
+
         state.thruster.power =
             power
+
     end
 
     --------------------------------------------------
@@ -72,8 +76,10 @@ local function update()
         call("getThrust")
 
     if thrust ~= nil then
+
         state.thruster.thrust =
             thrust
+
     end
 
     --------------------------------------------------
@@ -84,36 +90,44 @@ local function update()
         call("getVectorX")
 
     if vectorX ~= nil then
+
         state.thruster.vectorX =
             vectorX
+
     end
 
     local vectorY =
         call("getVectorY")
 
     if vectorY ~= nil then
+
         state.thruster.vectorY =
             vectorY
+
     end
 
     --------------------------------------------------
     -- TARGET VECTOR
     --------------------------------------------------
 
-    local targetX =
+    local targetVectorX =
         call("getTargetVectorX")
 
-    if targetX ~= nil then
+    if targetVectorX ~= nil then
+
         state.thruster.targetVectorX =
-            targetX
+            targetVectorX
+
     end
 
-    local targetY =
+    local targetVectorY =
         call("getTargetVectorY")
 
-    if targetY ~= nil then
+    if targetVectorY ~= nil then
+
         state.thruster.targetVectorY =
-            targetY
+            targetVectorY
+
     end
 
     --------------------------------------------------
@@ -121,13 +135,14 @@ local function update()
     --------------------------------------------------
 
     state.thruster.online = true
-    state.thruster.status = "DRY TEST"
+    state.thruster.status = "ONLINE"
+
+    state.thruster.updateCount =
+        state.thruster.updateCount + 1
 
     state.thruster.lastUpdate =
         os.clock()
 
-    state.thruster.updateCount =
-        state.thruster.updateCount + 1
 end
 
 --------------------------------------------------
@@ -139,6 +154,7 @@ while state.system.running do
     update()
 
     sleep(0.05)
+
 end
 
 state.thruster.online = false

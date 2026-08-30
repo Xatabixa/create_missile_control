@@ -1,58 +1,144 @@
--- Missile Control - File Diagnostic
+-- Missile Control System Launcher
+-- Runs all modules in the same environment.
+-- Module errors are reported instead of being silently hidden.
 
-term.clear()
-term.setCursorPos(1, 1)
+--------------------------------------------------
+-- LOAD SHARED STATE
+--------------------------------------------------
 
-print("MISSILE CONTROL")
-print("FILE DIAGNOSTIC")
-print("================")
-print("")
+local state = require("state")
 
-local files = {
-    "state.lua",
-    "navigation.lua",
-    "guidance.lua",
-    "actuator.lua",
-    "display.lua"
+state.system.running = true
+state.system.mode = "DRY TEST"
+state.system.status = "STARTING"
+
+--------------------------------------------------
+-- MODULE LOADER
+--------------------------------------------------
+
+local function loadModule(filename)
+
+    local chunk, errorMessage =
+        loadfile(filename)
+
+    if not chunk then
+
+        error(
+            "LOAD ERROR [" ..
+            filename ..
+            "]: " ..
+            tostring(errorMessage)
+        )
+
+    end
+
+    return chunk
+
+end
+
+--------------------------------------------------
+-- MODULES
+--------------------------------------------------
+
+local modules = {
+
+    {
+        name = "NAVIGATION",
+        file = "navigation.lua"
+    },
+
+    {
+        name = "GUIDANCE",
+        file = "guidance.lua"
+    },
+
+    {
+        name = "THRUSTER",
+        file = "actuator.lua"
+    },
+
+    {
+        name = "DISPLAY",
+        file = "display.lua"
+    }
+
 }
 
-for _, filename in ipairs(files) do
+--------------------------------------------------
+-- LOAD ALL MODULES
+--------------------------------------------------
 
-    print("")
-    print("FILE: " .. filename)
-    print("----------------")
+local loaded = {}
 
-    if not fs.exists(filename) then
+for _, module in ipairs(modules) do
 
-        print("NOT FOUND")
+    loaded[module.name] =
+        loadModule(module.file)
 
-    else
+end
 
-        print("EXISTS")
+--------------------------------------------------
+-- RUN MODULE
+--------------------------------------------------
 
-        local chunk, err =
-            loadfile(filename)
+local function runModule(name)
 
-        if chunk then
+    local ok, errorMessage =
+        pcall(
+            loaded[name]
+        )
 
-            print("LOAD: OK")
+    if not ok then
 
-        else
+        state.system.status = "ERROR"
 
-            print("LOAD: FAILED")
-            print("")
-            print(tostring(err))
+        print("")
+        print("==============================")
+        print("MODULE ERROR")
+        print(name)
+        print("==============================")
+        print("")
+        print(tostring(errorMessage))
+        print("")
 
-        end
+        state.system.running = false
 
     end
 
 end
 
-print("")
-print("================")
-print("END")
-print("")
-print("Press any key...")
+--------------------------------------------------
+-- START
+--------------------------------------------------
 
-os.pullEvent("key")
+state.system.status = "ONLINE"
+
+parallel.waitForAny(
+
+    function()
+        runModule("NAVIGATION")
+    end,
+
+    function()
+        runModule("GUIDANCE")
+    end,
+
+    function()
+        runModule("THRUSTER")
+    end,
+
+    function()
+        runModule("DISPLAY")
+    end
+
+)
+
+--------------------------------------------------
+-- SHUTDOWN
+--------------------------------------------------
+
+state.system.running = false
+
+if state.system.status ~= "ERROR" then
+    state.system.status = "OFFLINE"
+end
