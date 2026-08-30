@@ -1,128 +1,220 @@
--- Missile Control System Launcher
--- All modules run inside the same Lua environment
--- so they share the same state table.
-
---------------------------------------------------
--- LOAD SHARED STATE
---------------------------------------------------
+-- Missile Control System
+-- State and peripheral diagnostic launcher
 
 local state = require("state")
-
-state.system.running = true
-state.system.mode = "DRY TEST"
-state.system.status = "STARTING"
-
---------------------------------------------------
--- LOAD MODULE
---------------------------------------------------
-
-local function loadModule(filename)
-
-    local chunk, errorMessage =
-        loadfile(filename)
-
-    if not chunk then
-
-        error(
-            "Failed to load " ..
-            filename ..
-            ": " ..
-            tostring(errorMessage)
-        )
-
-    end
-
-    return chunk
-end
-
---------------------------------------------------
--- LOAD ALL MODULES
---------------------------------------------------
-
-local navigation =
-    loadModule("navigation.lua")
-
-local guidance =
-    loadModule("guidance.lua")
-
-local actuator =
-    loadModule("actuator.lua")
-
-local display =
-    loadModule("display.lua")
-
---------------------------------------------------
--- RUN MODULE
---------------------------------------------------
-
-local function runModule(name, module)
-
-    local ok, errorMessage =
-        pcall(module)
-
-    if not ok then
-
-        print("")
-        print("MODULE ERROR")
-        print(name)
-        print("")
-        print(tostring(errorMessage))
-
-        state.system.status = "ERROR"
-
-        state.system.running = false
-
-    end
-
-end
-
---------------------------------------------------
--- START SYSTEM
---------------------------------------------------
-
-parallel.waitForAny(
-
-    function()
-        runModule(
-            "NAVIGATION",
-            navigation
-        )
-    end,
-
-    function()
-        runModule(
-            "GUIDANCE",
-            guidance
-        )
-    end,
-
-    function()
-        runModule(
-            "ACTUATOR",
-            actuator
-        )
-    end,
-
-    function()
-        runModule(
-            "DISPLAY",
-            display
-        )
-    end
-
-)
-
---------------------------------------------------
--- SHUTDOWN
---------------------------------------------------
-
-state.system.running = false
-state.system.status = "OFFLINE"
 
 term.clear()
 term.setCursorPos(1, 1)
 
-print("MISSILE CONTROL SYSTEM")
-print("======================")
+--------------------------------------------------
+-- HEADER
+--------------------------------------------------
+
+print("MISSILE CONTROL DIAGNOSTIC")
+print("==========================")
 print("")
-print("SYSTEM OFFLINE")
+
+--------------------------------------------------
+-- STATE TEST
+--------------------------------------------------
+
+print("STATE TEST")
+print("--------------------------")
+
+if state then
+    print("state.lua       OK")
+else
+    print("state.lua       FAILED")
+end
+
+print(
+    "system.running  " ..
+    tostring(state.system.running)
+)
+
+print(
+    "system.mode     " ..
+    tostring(state.system.mode)
+)
+
+print("")
+
+--------------------------------------------------
+-- PERIPHERAL LIST
+--------------------------------------------------
+
+print("PERIPHERALS")
+print("--------------------------")
+
+local names = peripheral.getNames()
+
+if #names == 0 then
+
+    print("NO PERIPHERALS")
+
+else
+
+    for _, name in ipairs(names) do
+
+        local pType =
+            peripheral.getType(name)
+
+        print(
+            name ..
+            " : " ..
+            tostring(pType)
+        )
+
+    end
+
+end
+
+print("")
+
+--------------------------------------------------
+-- NAVIGATION
+--------------------------------------------------
+
+print("NAVIGATION TABLE")
+print("--------------------------")
+
+local navigation =
+    peripheral.find("navigation_table")
+
+if navigation then
+
+    print("FOUND")
+
+    local name =
+        peripheral.getName(navigation)
+
+    print(
+        "Name: " ..
+        tostring(name)
+    )
+
+    print("")
+
+    local methods =
+        peripheral.getMethods(name)
+
+    print("Methods: " .. #methods)
+
+else
+
+    print("NOT FOUND")
+
+end
+
+print("")
+
+--------------------------------------------------
+-- THRUSTER
+--------------------------------------------------
+
+print("VECTOR THRUSTER")
+print("--------------------------")
+
+local thruster =
+    peripheral.find("liquid_vector_thruster")
+
+if thruster then
+
+    print("FOUND")
+
+    local name =
+        peripheral.getName(thruster)
+
+    print(
+        "Name: " ..
+        tostring(name)
+    )
+
+    print("")
+
+    local methods =
+        peripheral.getMethods(name)
+
+    print("Methods: " .. #methods)
+
+else
+
+    print("NOT FOUND")
+
+end
+
+print("")
+
+--------------------------------------------------
+-- MODULE LOADING TEST
+--------------------------------------------------
+
+print("MODULE TEST")
+print("--------------------------")
+
+local modules = {
+    "navigation.lua",
+    "guidance.lua",
+    "actuator.lua",
+    "display.lua"
+}
+
+for _, filename in ipairs(modules) do
+
+    local chunk, err =
+        loadfile(filename)
+
+    if chunk then
+
+        print(
+            filename ..
+            " : LOAD OK"
+        )
+
+    else
+
+        print(
+            filename ..
+            " : LOAD FAILED"
+        )
+
+        print(
+            tostring(err)
+        )
+
+    end
+
+end
+
+print("")
+
+--------------------------------------------------
+-- STATE VALUES
+--------------------------------------------------
+
+print("STATE VALUES")
+print("--------------------------")
+
+print(
+    "NAV  = " ..
+    tostring(state.navigation.online)
+)
+
+print(
+    "GUID = " ..
+    tostring(state.guidance.online)
+)
+
+print(
+    "ENG  = " ..
+    tostring(state.thruster.online)
+)
+
+print("")
+
+print("==========================")
+print("DIAGNOSTIC FINISHED")
+print("")
+print("Press any key...")
+
+os.pullEvent("key")
