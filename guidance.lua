@@ -1,31 +1,68 @@
 -- Missile Guidance System
--- Uses the custom navigation solution:
---   state.navigation.position
---   state.navigation.targetDeltaX/Y/Z
---   state.navigation.distance
---   state.navigation.bearing
---   state.navigation.heading
---   state.navigation.pitch
+-- PID flight guidance
 --
--- SAFE:
--- Guidance only calculates commands.
--- actuator.lua decides whether commands are actually applied.
+-- Calculates steering commands for the
+-- Liquid Vector Thruster.
+--
+-- actuator.lua is responsible for actually
+-- applying these commands to the engine.
 
 --------------------------------------------------
--- LIMITS
+-- SETTINGS
 --------------------------------------------------
 
+-- Maximum engine gimbal command.
 local MAX_VECTOR = 0.25
 
-local YAW_GAIN = 0.15
-local PITCH_GAIN = 0.20
-
-local YAW_DEADZONE = math.rad(1.0)
-local PITCH_DEADZONE = math.rad(1.0)
-
+-- Maximum change of command per update.
 local MAX_COMMAND_STEP = 0.025
 
+-- Update interval.
 local UPDATE_INTERVAL = 0.05
+
+
+--------------------------------------------------
+-- YAW PID
+--------------------------------------------------
+
+local YAW_KP = 0.16
+local YAW_KI = 0.002
+local YAW_KD = 0.08
+
+
+--------------------------------------------------
+-- PITCH PID
+--------------------------------------------------
+
+local PITCH_KP = 0.20
+local PITCH_KI = 0.002
+local PITCH_KD = 0.08
+
+
+--------------------------------------------------
+-- DEADZONE
+--------------------------------------------------
+
+local YAW_DEADZONE =
+    math.rad(1.0)
+
+local PITCH_DEADZONE =
+    math.rad(1.0)
+
+
+--------------------------------------------------
+-- INTEGRAL LIMIT
+--------------------------------------------------
+
+local MAX_YAW_INTEGRAL = 1.0
+local MAX_PITCH_INTEGRAL = 1.0
+
+
+--------------------------------------------------
+-- TARGET ARRIVAL
+--------------------------------------------------
+
+local ARRIVAL_DISTANCE = 5
 
 
 --------------------------------------------------
@@ -38,15 +75,19 @@ local function clamp(
     maximum
 )
 
-    value = tonumber(value) or 0
+    value =
+        tonumber(value) or 0
+
 
     if value < minimum then
         return minimum
     end
 
+
     if value > maximum then
         return maximum
     end
+
 
     return value
 end
@@ -58,7 +99,9 @@ end
 
 local function normalizeAngle(angle)
 
-    angle = tonumber(angle) or 0
+    angle =
+        tonumber(angle) or 0
+
 
     while angle > math.pi do
 
@@ -68,6 +111,7 @@ local function normalizeAngle(angle)
 
     end
 
+
     while angle < -math.pi do
 
         angle =
@@ -76,12 +120,13 @@ local function normalizeAngle(angle)
 
     end
 
+
     return angle
 end
 
 
 --------------------------------------------------
--- SMOOTH APPROACH
+-- SMOOTH COMMAND
 --------------------------------------------------
 
 local function approach(
@@ -123,12 +168,16 @@ end
 local function run(state)
 
     --------------------------------------------------
-    -- STATE
+    -- CREATE GUIDANCE STATE
     --------------------------------------------------
 
     state.guidance =
         state.guidance or {}
 
+
+    --------------------------------------------------
+    -- STATUS
+    --------------------------------------------------
 
     state.guidance.online =
         false
@@ -140,6 +189,10 @@ local function run(state)
         false
 
 
+    --------------------------------------------------
+    -- COMMANDS
+    --------------------------------------------------
+
     state.guidance.commandX =
         0
 
@@ -147,12 +200,20 @@ local function run(state)
         0
 
 
+    --------------------------------------------------
+    -- ERRORS
+    --------------------------------------------------
+
     state.guidance.yawError =
         0
 
     state.guidance.pitchError =
         0
 
+
+    --------------------------------------------------
+    -- TARGET
+    --------------------------------------------------
 
     state.guidance.targetBearing =
         0
@@ -162,7 +223,25 @@ local function run(state)
 
 
     --------------------------------------------------
-    -- INTERNAL COMMAND STATE
+    -- PID STATE
+    --------------------------------------------------
+
+    local yawIntegral =
+        0
+
+    local pitchIntegral =
+        0
+
+
+    local previousYawError =
+        0
+
+    local previousPitchError =
+        0
+
+
+    --------------------------------------------------
+    -- ENGINE COMMAND STATE
     --------------------------------------------------
 
     local currentCommandX =
@@ -170,6 +249,14 @@ local function run(state)
 
     local currentCommandY =
         0
+
+
+    --------------------------------------------------
+    -- TIME
+    --------------------------------------------------
+
+    local previousTime =
+        os.clock()
 
 
     --------------------------------------------------
@@ -198,6 +285,13 @@ local function run(state)
                 false
 
 
+            yawIntegral =
+                0
+
+            pitchIntegral =
+                0
+
+
             currentCommandX =
                 approach(
                     currentCommandX,
@@ -221,9 +315,12 @@ local function run(state)
                 currentCommandY
 
             return
-
         end
 
+
+        --------------------------------------------------
+        -- NAVIGATION STATUS
+        --------------------------------------------------
 
         if not navigation.online then
 
@@ -237,6 +334,13 @@ local function run(state)
                 false
 
 
+            yawIntegral =
+                0
+
+            pitchIntegral =
+                0
+
+
             currentCommandX =
                 approach(
                     currentCommandX,
@@ -260,7 +364,6 @@ local function run(state)
                 currentCommandY
 
             return
-
         end
 
 
@@ -293,7 +396,18 @@ local function run(state)
             or navigationTarget
 
 
+        --------------------------------------------------
+        -- NO TARGET
+        --------------------------------------------------
+
         if not state.guidance.active then
+
+            yawIntegral =
+                0
+
+            pitchIntegral =
+                0
+
 
             currentCommandX =
                 approach(
@@ -318,7 +432,67 @@ local function run(state)
                 currentCommandY
 
             return
+        end
 
+
+        --------------------------------------------------
+        -- DISTANCE
+        --------------------------------------------------
+
+        local distance =
+            tonumber(
+                navigation.distance
+            ) or 0
+
+
+        state.guidance.distance =
+            distance
+
+
+        --------------------------------------------------
+        -- ARRIVAL
+        --------------------------------------------------
+
+        if distance <=
+            ARRIVAL_DISTANCE then
+
+            state.guidance.status =
+                "TARGET REACHED"
+
+            state.guidance.active =
+                false
+
+
+            yawIntegral =
+                0
+
+            pitchIntegral =
+                0
+
+
+            currentCommandX =
+                approach(
+                    currentCommandX,
+                    0,
+                    MAX_COMMAND_STEP
+                )
+
+
+            currentCommandY =
+                approach(
+                    currentCommandY,
+                    0,
+                    MAX_COMMAND_STEP
+                )
+
+
+            state.guidance.commandX =
+                currentCommandX
+
+            state.guidance.commandY =
+                currentCommandY
+
+            return
         end
 
 
@@ -344,6 +518,10 @@ local function run(state)
             ) or 0
 
 
+        --------------------------------------------------
+        -- HORIZONTAL DISTANCE
+        --------------------------------------------------
+
         local horizontalDistance =
             math.sqrt(
                 dx * dx +
@@ -351,17 +529,12 @@ local function run(state)
             )
 
 
-        local distance =
-            tonumber(
-                navigation.distance
-            ) or 0
-
-
         --------------------------------------------------
         -- TARGET BEARING
         --------------------------------------------------
 
-        local targetBearing
+        local targetBearing =
+            0
 
 
         if horizontalDistance >
@@ -465,83 +638,220 @@ local function run(state)
 
 
         --------------------------------------------------
-        -- YAW COMMAND
+        -- TIME
         --------------------------------------------------
 
-        local targetCommandY =
-            0
+        local now =
+            os.clock()
 
+
+        local dt =
+            now - previousTime
+
+
+        previousTime =
+            now
+
+
+        --------------------------------------------------
+        -- SAFE DT
+        --------------------------------------------------
+
+        if dt <= 0
+            or dt > 0.5 then
+
+            dt =
+                UPDATE_INTERVAL
+
+        end
+
+
+        --------------------------------------------------
+        -- YAW DERIVATIVE
+        --------------------------------------------------
+
+        local yawDerivative =
+            (
+                yawError -
+                previousYawError
+            ) / dt
+
+
+        --------------------------------------------------
+        -- PITCH DERIVATIVE
+        --------------------------------------------------
+
+        local pitchDerivative =
+            (
+                pitchError -
+                previousPitchError
+            ) / dt
+
+
+        --------------------------------------------------
+        -- SAVE ERROR
+        --------------------------------------------------
+
+        previousYawError =
+            yawError
+
+
+        previousPitchError =
+            pitchError
+
+
+        --------------------------------------------------
+        -- YAW INTEGRAL
+        --------------------------------------------------
 
         if math.abs(yawError) >
             YAW_DEADZONE then
 
-            targetCommandY =
-                yawError *
-                YAW_GAIN
+            yawIntegral =
+                yawIntegral +
+                yawError * dt
+
+        else
+
+            yawIntegral =
+                yawIntegral * 0.90
 
         end
 
 
-        --------------------------------------------------
-        -- PITCH COMMAND
-        --------------------------------------------------
+        yawIntegral =
+            clamp(
+                yawIntegral,
+                -MAX_YAW_INTEGRAL,
+                MAX_YAW_INTEGRAL
+            )
 
-        local targetCommandX =
-            0
 
+        --------------------------------------------------
+        -- PITCH INTEGRAL
+        --------------------------------------------------
 
         if math.abs(pitchError) >
             PITCH_DEADZONE then
 
-            targetCommandX =
-                pitchError *
-                PITCH_GAIN
+            pitchIntegral =
+                pitchIntegral +
+                pitchError * dt
+
+        else
+
+            pitchIntegral =
+                pitchIntegral * 0.90
+
+        end
+
+
+        pitchIntegral =
+            clamp(
+                pitchIntegral,
+                -MAX_PITCH_INTEGRAL,
+                MAX_PITCH_INTEGRAL
+            )
+
+
+        --------------------------------------------------
+        -- YAW PID
+        --------------------------------------------------
+
+        local yawCommand =
+            YAW_KP *
+            yawError
+
+            +
+            YAW_KI *
+            yawIntegral
+
+            +
+            YAW_KD *
+            yawDerivative
+
+
+        --------------------------------------------------
+        -- PITCH PID
+        --------------------------------------------------
+
+        local pitchCommand =
+            PITCH_KP *
+            pitchError
+
+            +
+            PITCH_KI *
+            pitchIntegral
+
+            +
+            PITCH_KD *
+            pitchDerivative
+
+
+        --------------------------------------------------
+        -- DEADZONE
+        --------------------------------------------------
+
+        if math.abs(yawError) <=
+            YAW_DEADZONE then
+
+            yawCommand =
+                0
+
+        end
+
+
+        if math.abs(pitchError) <=
+            PITCH_DEADZONE then
+
+            pitchCommand =
+                0
 
         end
 
 
         --------------------------------------------------
-        -- LIMIT
+        -- LIMIT COMMAND
         --------------------------------------------------
 
-        targetCommandX =
+        yawCommand =
             clamp(
-                targetCommandX,
+                yawCommand,
                 -MAX_VECTOR,
                 MAX_VECTOR
             )
 
 
-        targetCommandY =
+        pitchCommand =
             clamp(
-                targetCommandY,
+                pitchCommand,
                 -MAX_VECTOR,
                 MAX_VECTOR
             )
 
 
         --------------------------------------------------
-        -- SMOOTHING
+        -- COMMAND SMOOTHING
         --------------------------------------------------
-
-        currentCommandX =
-            approach(
-                currentCommandX,
-                targetCommandX,
-                MAX_COMMAND_STEP
-            )
-
 
         currentCommandY =
             approach(
                 currentCommandY,
-                targetCommandY,
+                yawCommand,
+                MAX_COMMAND_STEP
+            )
+
+
+        currentCommandX =
+            approach(
+                currentCommandX,
+                pitchCommand,
                 MAX_COMMAND_STEP
             )
 
 
         --------------------------------------------------
-        -- PUBLISH
+        -- OUTPUT
         --------------------------------------------------
 
         state.guidance.commandX =
@@ -550,6 +860,47 @@ local function run(state)
 
         state.guidance.commandY =
             currentCommandY
+
+
+        --------------------------------------------------
+        -- DEBUG DATA
+        --------------------------------------------------
+
+        state.guidance.yawP =
+            YAW_KP * yawError
+
+        state.guidance.yawI =
+            YAW_KI * yawIntegral
+
+        state.guidance.yawD =
+            YAW_KD * yawDerivative
+
+
+        state.guidance.pitchP =
+            PITCH_KP * pitchError
+
+        state.guidance.pitchI =
+            PITCH_KI * pitchIntegral
+
+        state.guidance.pitchD =
+            PITCH_KD * pitchDerivative
+
+
+        state.guidance.yawIntegral =
+            yawIntegral
+
+        state.guidance.pitchIntegral =
+            pitchIntegral
+
+
+        state.guidance.targetDX =
+            dx
+
+        state.guidance.targetDY =
+            dy
+
+        state.guidance.targetDZ =
+            dz
 
     end
 
@@ -580,17 +931,14 @@ local function run(state)
     state.guidance.commandY =
         0
 
-    state.guidance.yawError =
-        0
-
-    state.guidance.pitchError =
-        0
 
     state.guidance.active =
         false
 
+
     state.guidance.online =
         false
+
 
     state.guidance.status =
         "OFFLINE"
@@ -599,7 +947,7 @@ end
 
 
 --------------------------------------------------
--- MODULE EXPORT
+-- MODULE
 --------------------------------------------------
 
 return {
