@@ -1,5 +1,5 @@
 -- Missile Control Diagnostic
--- Scrollable diagnostic information
+-- Scrollable diagnostic information for CC:Tweaked
 
 local lines = {}
 local scroll = 0
@@ -9,15 +9,17 @@ local scroll = 0
 --------------------------------------------------
 
 local function add(text)
-    table.insert(lines, tostring(text))
+    lines[#lines + 1] = tostring(text)
 end
 
 --------------------------------------------------
--- SAFE PERIPHERAL METHODS
+-- GET METHODS
 --------------------------------------------------
 
 local function getMethods(name)
-    local methods = peripheral.getMethods(name)
+
+    local methods =
+        peripheral.getMethods(name)
 
     if not methods then
         return {}
@@ -29,7 +31,7 @@ local function getMethods(name)
 end
 
 --------------------------------------------------
--- COLLECT INFORMATION
+-- COLLECT DIAGNOSTIC DATA
 --------------------------------------------------
 
 add("MISSILE CONTROL DIAGNOSTIC")
@@ -43,7 +45,8 @@ add("")
 add("CONNECTED PERIPHERALS")
 add("----------------------")
 
-local names = peripheral.getNames()
+local names =
+    peripheral.getNames()
 
 if #names == 0 then
 
@@ -53,14 +56,15 @@ else
 
     for _, name in ipairs(names) do
 
-        local types = peripheral.getType(name)
+        local pType =
+            peripheral.getType(name)
 
-        if type(types) == "table" then
+        if type(pType) == "table" then
 
             add(
                 name ..
                 " -> " ..
-                table.concat(types, ", ")
+                table.concat(pType, ", ")
             )
 
         else
@@ -68,20 +72,18 @@ else
             add(
                 name ..
                 " -> " ..
-                tostring(types)
+                tostring(pType)
             )
 
         end
-
     end
-
 end
 
 add("")
 add("----------------------")
 
 --------------------------------------------------
--- NAVIGATION
+-- NAVIGATION TABLE
 --------------------------------------------------
 
 local navigation =
@@ -91,20 +93,17 @@ if navigation then
 
     add("NAVIGATION TABLE: FOUND")
 
-    local navigationName =
+    local name =
         peripheral.getName(navigation)
 
-    add(
-        "Name: " ..
-        tostring(navigationName)
-    )
+    add("Name: " .. tostring(name))
 
     add("")
     add("NAVIGATION METHODS")
     add("------------------")
 
     local methods =
-        getMethods(navigationName)
+        getMethods(name)
 
     if #methods == 0 then
 
@@ -138,20 +137,17 @@ if thruster then
 
     add("VECTOR THRUSTER: FOUND")
 
-    local thrusterName =
+    local name =
         peripheral.getName(thruster)
 
-    add(
-        "Name: " ..
-        tostring(thrusterName)
-    )
+    add("Name: " .. tostring(name))
 
     add("")
     add("THRUSTER METHODS")
     add("----------------")
 
     local methods =
-        getMethods(thrusterName)
+        getMethods(name)
 
     if #methods == 0 then
 
@@ -172,94 +168,11 @@ else
 end
 
 add("")
-add("----------------------")
-
---------------------------------------------------
--- DEVICE TEST
---------------------------------------------------
-
-add("METHOD TEST")
-add("-----------")
-
-if navigation then
-
-    local name =
-        peripheral.getName(navigation)
-
-    add("Navigation device: " .. name)
-
-    local methods =
-        getMethods(name)
-
-    for _, method in ipairs(methods) do
-
-        local ok, result =
-            pcall(function()
-                return peripheral.call(name, method)
-            end)
-
-        if ok then
-
-            if type(result) == "table" then
-                add(
-                    method ..
-                    " = TABLE"
-                )
-            elseif result == nil then
-                add(
-                    method ..
-                    " = nil"
-                )
-            else
-                add(
-                    method ..
-                    " = " ..
-                    tostring(result)
-                )
-            end
-
-        else
-
-            add(
-                method ..
-                " = ERROR"
-            )
-
-        end
-
-    end
-
-else
-
-    add("Navigation device unavailable.")
-
-end
-
-add("")
-add("----------------------")
-
-if thruster then
-
-    local name =
-        peripheral.getName(thruster)
-
-    add(
-        "Thruster device: " ..
-        name
-    )
-
-else
-
-    add("Thruster device unavailable.")
-
-end
-
-add("")
 add("==========================")
 add("END OF DIAGNOSTIC")
 
 --------------------------------------------------
--- DISPLAY
+-- DRAW SCREEN
 --------------------------------------------------
 
 local function draw()
@@ -269,14 +182,28 @@ local function draw()
     local width, height =
         term.getSize()
 
+    local visibleLines =
+        height - 3
+
+    local maxScroll =
+        math.max(
+            0,
+            #lines - visibleLines
+        )
+
+    if scroll > maxScroll then
+        scroll = maxScroll
+    end
+
     term.setCursorPos(1, 1)
 
     print(
-        "DIAGNOSTIC  [" ..
+        "DIAGNOSTIC " ..
+        "[" ..
         (scroll + 1) ..
         "-" ..
         math.min(
-            scroll + height - 2,
+            scroll + visibleLines,
             #lines
         ) ..
         "/" ..
@@ -284,14 +211,18 @@ local function draw()
         "]"
     )
 
+    term.setCursorPos(1, 2)
+
     print(
         string.rep("-", width)
     )
 
-    for i = 1, height - 2 do
+    for i = 1, visibleLines do
 
         local index =
             scroll + i
+
+        term.setCursorPos(1, i + 2)
 
         if index <= #lines then
 
@@ -299,109 +230,137 @@ local function draw()
                 lines[index]
 
             if #text > width then
-
                 text =
                     string.sub(
                         text,
                         1,
                         width
                     )
-
             end
 
-            term.setCursorPos(1, i + 2)
-            print(text)
+            write(text)
 
         end
-
-    end
-
-    term.setCursorPos(1, height)
-
-    print(
-        "UP/DOWN Scroll | PgUp/PgDn Page | Q Exit"
-    )
-
-end
-
---------------------------------------------------
--- INPUT
---------------------------------------------------
-
-local function input()
-
-    while true do
-
-        local _, key =
-            os.pullEvent("key")
-
-        local _, height =
-            term.getSize()
-
-        local maxScroll =
-            math.max(
-                0,
-                #lines - (height - 2)
-            )
-
-        if key == keys.up then
-
-            scroll =
-                math.max(
-                    0,
-                    scroll - 1
-                )
-
-        elseif key == keys.down then
-
-            scroll =
-                math.min(
-                    maxScroll,
-                    scroll + 1
-                )
-
-        elseif key == keys.pageUp then
-
-            scroll =
-                math.max(
-                    0,
-                    scroll - (height - 2)
-                )
-
-        elseif key == keys.pageDown then
-
-            scroll =
-                math.min(
-                    maxScroll,
-                    scroll + (height - 2)
-                )
-
-        elseif key == keys.home then
-
-            scroll = 0
-
-        elseif key == keys["end"] then
-
-            scroll = maxScroll
-
-        elseif key == keys.q then
-
-            return
-
-        end
-
-        draw()
 
     end
 
 end
 
 --------------------------------------------------
--- START
+-- MAIN INPUT LOOP
 --------------------------------------------------
 
 draw()
-input()
+
+while true do
+
+    local event, key =
+        os.pullEvent("key")
+
+    local keyName =
+        keys.getName(key)
+
+    local _, height =
+        term.getSize()
+
+    local visibleLines =
+        height - 3
+
+    local maxScroll =
+        math.max(
+            0,
+            #lines - visibleLines
+        )
+
+    --------------------------------------------------
+    -- DEBUG
+    --------------------------------------------------
+
+    -- Uncomment this if keyboard input needs testing:
+    -- term.setCursorPos(1, 1)
+    -- print("KEY: " .. tostring(keyName))
+
+    --------------------------------------------------
+    -- UP
+    --------------------------------------------------
+
+    if keyName == "up" then
+
+        scroll =
+            math.max(
+                0,
+                scroll - 1
+            )
+
+    --------------------------------------------------
+    -- DOWN
+    --------------------------------------------------
+
+    elseif keyName == "down" then
+
+        scroll =
+            math.min(
+                maxScroll,
+                scroll + 1
+            )
+
+    --------------------------------------------------
+    -- PAGE UP
+    --------------------------------------------------
+
+    elseif keyName == "pageUp" then
+
+        scroll =
+            math.max(
+                0,
+                scroll - visibleLines
+            )
+
+    --------------------------------------------------
+    -- PAGE DOWN
+    --------------------------------------------------
+
+    elseif keyName == "pageDown" then
+
+        scroll =
+            math.min(
+                maxScroll,
+                scroll + visibleLines
+            )
+
+    --------------------------------------------------
+    -- HOME
+    --------------------------------------------------
+
+    elseif keyName == "home" then
+
+        scroll = 0
+
+    --------------------------------------------------
+    -- END
+    --------------------------------------------------
+
+    elseif keyName == "end" then
+
+        scroll = maxScroll
+
+    --------------------------------------------------
+    -- EXIT
+    --------------------------------------------------
+
+    elseif keyName == "q" then
+
+        break
+
+    end
+
+    draw()
+
+end
+
+--------------------------------------------------
+-- EXIT
+--------------------------------------------------
 
 term.clear()
 term.setCursorPos(1, 1)
