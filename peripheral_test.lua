@@ -1,26 +1,53 @@
 -- Peripheral diagnostic
+-- Shows all peripherals page by page.
 -- No require() is used.
 
-print("=== PERIPHERALS ===")
-print("")
+local names = peripheral.getNames()
+local index = 1
+local perPage = 10
 
-for _, name in ipairs(peripheral.getNames()) do
-    local pType = peripheral.getType(name)
+while index <= #names do
+    term.clear()
+    term.setCursorPos(1, 1)
 
-    print(name .. " : " .. tostring(pType))
+    print("=== PERIPHERALS ===")
+    print("Page " ..
+        math.ceil(index / perPage) ..
+        "/" ..
+        math.ceil(#names / perPage))
+    print("")
 
-    local methods = peripheral.getMethods(name)
+    local last = math.min(
+        index + perPage - 1,
+        #names
+    )
 
-    if methods then
-        for _, method in ipairs(methods) do
-            print("  - " .. method)
-        end
+    for i = index, last do
+        local name = names[i]
+        local pType = peripheral.getType(name)
+
+        print(i .. ". " ..
+            name ..
+            " [" ..
+            tostring(pType) ..
+            "]")
     end
 
     print("")
+    print("N = next page")
+    print("Q = quit")
+
+    local event, key = os.pullEvent("key")
+
+    if key == keys.n then
+        index = index + perPage
+
+    elseif key == keys.q then
+        break
+    end
 end
 
-print("===================")
-print("Press any key...")
+term.clear()
+term.setCursorPos(1, 1)
 
-os.pullEvent("key")
+print("Diagnostic finished.")
