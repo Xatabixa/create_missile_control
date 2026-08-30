@@ -1,218 +1,90 @@
 -- Missile Control System Launcher
--- All modules share the same state and require function.
+-- Simple CC:Tweaked launcher.
+-- All modules are executed as normal ComputerCraft programs.
 
 --------------------------------------------------
 -- CONFIGURATION
 --------------------------------------------------
 
-local BASE = "/rocket"
+local ROOT = "/rocket"
+
+local modules = {
+    "navigation.lua",
+    "guidance.lua",
+    "actuator.lua",
+    "display.lua"
+}
 
 --------------------------------------------------
--- LOAD STATE
+-- PREPARE ENVIRONMENT
 --------------------------------------------------
 
-local stateChunk, stateError =
-    loadfile(BASE .. "/state.lua")
-
-if not stateChunk then
-
-    error(
-        "STATE LOAD ERROR:\n" ..
-        tostring(stateError)
-    )
-
-end
-
-local state =
-    stateChunk()
+-- Make /rocket the working directory.
+shell.setDir(ROOT)
 
 --------------------------------------------------
--- MODULE LOADER
+-- CHECK FILES
 --------------------------------------------------
 
-local function loadModule(filename)
+for _, file in ipairs(modules) do
 
     local path =
-        BASE .. "/" .. filename
+        ROOT .. "/" .. file
 
     if not fs.exists(path) then
-
-        error(
-            "MODULE FILE NOT FOUND:\n" ..
-            path
-        )
-
-    end
-
-    local handle =
-        fs.open(path, "r")
-
-    if not handle then
-
-        error(
-            "CANNOT OPEN MODULE:\n" ..
-            path
-        )
-
-    end
-
-    local source =
-        handle.readAll()
-
-    handle.close()
-
-    --------------------------------------------------
-    -- MODULE ENVIRONMENT
-    --------------------------------------------------
-
-    local env = {}
-
-    setmetatable(
-        env,
-        {
-            __index = _G
-        }
-    )
-
-    --------------------------------------------------
-    -- SHARED REQUIRE
-    --------------------------------------------------
-
-    env.require = function(name)
-
-        if name == "state" then
-            return state
-        end
-
-        error(
-            "Unknown module requested: " ..
-            tostring(name)
-        )
-
-    end
-
-    --------------------------------------------------
-    -- COMPILE
-    --------------------------------------------------
-
-    local chunk, err =
-        load(
-            source,
-            "@" .. path,
-            "t",
-            env
-        )
-
-    if not chunk then
-
-        error(
-            "COMPILE ERROR:\n" ..
-            path ..
-            "\n\n" ..
-            tostring(err)
-        )
-
-    end
-
-    return chunk
-
-end
-
---------------------------------------------------
--- INITIAL STATE
---------------------------------------------------
-
-state.system.running = true
-state.system.mode = "DRY TEST"
-state.system.status = "STARTING"
-
---------------------------------------------------
--- LOAD MODULES
---------------------------------------------------
-
-local navigation =
-    loadModule("navigation.lua")
-
-local guidance =
-    loadModule("guidance.lua")
-
-local actuator =
-    loadModule("actuator.lua")
-
-local display =
-    loadModule("display.lua")
-
---------------------------------------------------
--- RUN MODULE
---------------------------------------------------
-
-local function runModule(name, module)
-
-    local ok, err =
-        xpcall(
-            module,
-            debug.traceback
-        )
-
-    if not ok then
-
-        state.system.status = "ERROR"
-        state.system.running = false
 
         term.clear()
         term.setCursorPos(1, 1)
 
-        print("MISSILE CONTROL ERROR")
-        print("=====================")
+        print("MISSILE CONTROL")
+        print("================")
         print("")
-        print("MODULE:")
-        print(name)
-        print("")
-        print("ERROR:")
-        print(tostring(err))
+        print("FILE NOT FOUND:")
+        print(path)
         print("")
         print("Press any key...")
 
         os.pullEvent("key")
 
+        return
     end
-
 end
 
 --------------------------------------------------
--- START
+-- START SYSTEM
 --------------------------------------------------
 
-state.system.status = "ONLINE"
+term.clear()
+term.setCursorPos(1, 1)
 
-parallel.waitForAny(
+print("MISSILE CONTROL")
+print("================")
+print("")
+print("Starting systems...")
+print("")
+
+sleep(0.5)
+
+--------------------------------------------------
+-- RUN MODULES
+--------------------------------------------------
+
+parallel.waitForAll(
 
     function()
-        runModule(
-            "NAVIGATION",
-            navigation
-        )
+        shell.run(ROOT .. "/navigation.lua")
     end,
 
     function()
-        runModule(
-            "GUIDANCE",
-            guidance
-        )
+        shell.run(ROOT .. "/guidance.lua")
     end,
 
     function()
-        runModule(
-            "THRUSTER",
-            actuator
-        )
+        shell.run(ROOT .. "/actuator.lua")
     end,
 
     function()
-        runModule(
-            "DISPLAY",
-            display
-        )
+        shell.run(ROOT .. "/display.lua")
     end
 
 )
@@ -221,8 +93,14 @@ parallel.waitForAny(
 -- SHUTDOWN
 --------------------------------------------------
 
-state.system.running = false
+term.clear()
+term.setCursorPos(1, 1)
 
-if state.system.status ~= "ERROR" then
-    state.system.status = "OFFLINE"
-end
+print("MISSILE CONTROL")
+print("================")
+print("")
+print("SYSTEM STOPPED")
+print("")
+print("Press any key...")
+
+os.pullEvent("key")
