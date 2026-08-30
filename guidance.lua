@@ -3,7 +3,6 @@
 -- Does NOT control the thruster directly.
 
 local state = require("state")
-state.guidance.online = true
 
 --------------------------------------------------
 -- CONFIGURATION
@@ -20,11 +19,7 @@ local DEADZONE = math.rad(0.5)
 -- CLAMP
 --------------------------------------------------
 
-local function clamp(
-    value,
-    minimum,
-    maximum
-)
+local function clamp(value, minimum, maximum)
 
     if value < minimum then
         return minimum
@@ -46,9 +41,12 @@ local function update()
     if not state.navigation.online then
 
         state.guidance.online = false
+        state.guidance.status = "OFFLINE"
+
+        state.guidance.commandX = 0
+        state.guidance.commandY = 0
 
         return
-
     end
 
     state.guidance.online = true
@@ -73,7 +71,6 @@ local function update()
         commandY =
             bearing *
             BEARING_GAIN
-
     end
 
     --------------------------------------------------
@@ -81,8 +78,6 @@ local function update()
     --
     -- X+ = FORWARD
     -- X- = BACKWARD
-    --
-    -- Vertical correction will be calibrated later.
     --------------------------------------------------
 
     local commandX = 0
@@ -92,7 +87,6 @@ local function update()
         commandX =
             elevation *
             ELEVATION_GAIN
-
     end
 
     --------------------------------------------------
@@ -113,6 +107,25 @@ local function update()
             MAX_VECTOR
         )
 
+    --------------------------------------------------
+    -- STATUS
+    --------------------------------------------------
+
+    if state.system.mode == "DRY TEST" then
+
+        state.guidance.status = "TEST"
+
+    else
+
+        state.guidance.status = "ACTIVE"
+
+    end
+
+    state.guidance.lastUpdate =
+        os.clock()
+
+    state.guidance.updateCount =
+        state.guidance.updateCount + 1
 end
 
 --------------------------------------------------
@@ -124,5 +137,7 @@ while state.system.running do
     update()
 
     sleep(0.05)
-
 end
+
+state.guidance.online = false
+state.guidance.status = "OFFLINE"

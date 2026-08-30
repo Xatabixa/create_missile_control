@@ -13,6 +13,7 @@ local navigation =
 if not navigation then
 
     state.navigation.online = false
+    state.navigation.status = "OFFLINE"
 
     while state.system.running do
         sleep(1)
@@ -22,6 +23,7 @@ if not navigation then
 end
 
 state.navigation.online = true
+state.navigation.status = "WAITING"
 
 --------------------------------------------------
 -- SAFE CALL
@@ -49,6 +51,8 @@ end
 
 local function update()
 
+    local receivedData = false
+
     --------------------------------------------------
     -- TARGET
     --------------------------------------------------
@@ -57,8 +61,11 @@ local function update()
         safeCall("hasTarget")
 
     if hasTarget ~= nil then
+
         state.navigation.hasTarget =
             hasTarget
+
+        receivedData = true
     end
 
     --------------------------------------------------
@@ -78,6 +85,7 @@ local function update()
         state.navigation.bearing =
             bearing
 
+        receivedData = true
     end
 
     --------------------------------------------------
@@ -94,6 +102,7 @@ local function update()
         state.navigation.elevation =
             vertical
 
+        receivedData = true
     end
 
     --------------------------------------------------
@@ -110,6 +119,7 @@ local function update()
         state.navigation.distance =
             distance
 
+        receivedData = true
     end
 
     --------------------------------------------------
@@ -124,6 +134,7 @@ local function update()
         state.navigation.closureRate =
             closure
 
+        receivedData = true
     end
 
     --------------------------------------------------
@@ -143,6 +154,7 @@ local function update()
         state.navigation.heading =
             heading
 
+        receivedData = true
     end
 
     --------------------------------------------------
@@ -156,7 +168,6 @@ local function update()
 
         relativeAngle =
             safeCall("getRelativeAngle")
-
     end
 
     if relativeAngle ~= nil then
@@ -164,8 +175,30 @@ local function update()
         state.navigation.relativeAngle =
             relativeAngle
 
+        receivedData = true
     end
 
+    --------------------------------------------------
+    -- STATUS
+    --------------------------------------------------
+
+    state.navigation.lastUpdate =
+        os.clock()
+
+    state.navigation.updateCount =
+        state.navigation.updateCount + 1
+
+    if receivedData then
+
+        state.navigation.online = true
+        state.navigation.status = "ONLINE"
+
+    else
+
+        state.navigation.online = true
+        state.navigation.status = "WAITING"
+
+    end
 end
 
 --------------------------------------------------
@@ -177,5 +210,7 @@ while state.system.running do
     update()
 
     sleep(0.05)
-
 end
+
+state.navigation.online = false
+state.navigation.status = "OFFLINE"

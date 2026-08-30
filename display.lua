@@ -9,7 +9,7 @@ local page = 1
 local inputMode = false
 
 --------------------------------------------------
--- NUMBER FORMAT
+-- FORMAT
 --------------------------------------------------
 
 local function fmt(value)
@@ -19,7 +19,6 @@ local function fmt(value)
     end
 
     return string.format("%.3f", value)
-
 end
 
 --------------------------------------------------
@@ -36,7 +35,19 @@ local function fmtAngle(value)
         "%.2f",
         math.deg(value)
     )
+end
 
+--------------------------------------------------
+-- STATUS
+--------------------------------------------------
+
+local function status(value)
+
+    if value == nil then
+        return "OFFLINE"
+    end
+
+    return value
 end
 
 --------------------------------------------------
@@ -55,7 +66,7 @@ local function header(title)
 end
 
 --------------------------------------------------
--- NAVIGATION PAGE
+-- NAVIGATION
 --------------------------------------------------
 
 local function drawNavigation()
@@ -65,20 +76,31 @@ local function drawNavigation()
     local n = state.navigation
 
     print(
-        "NAV: " ..
-        (n.online and "ONLINE" or "OFFLINE")
+        "STATUS: " ..
+        status(n.status)
+    )
+
+    print(
+        "TARGET: " ..
+        (
+            n.hasTarget
+            and "DETECTED"
+            or "NONE"
+        )
     )
 
     print("")
 
-    print("POS")
+    print("POSITION")
+
     print("X " .. fmt(n.position.x))
     print("Y " .. fmt(n.position.y))
     print("Z " .. fmt(n.position.z))
 
     print("")
 
-    print("VEL")
+    print("VELOCITY")
+
     print("X " .. fmt(n.velocity.x))
     print("Y " .. fmt(n.velocity.y))
     print("Z " .. fmt(n.velocity.z))
@@ -105,7 +127,7 @@ local function drawNavigation()
 end
 
 --------------------------------------------------
--- GUIDANCE PAGE
+-- GUIDANCE
 --------------------------------------------------
 
 local function drawGuidance()
@@ -116,22 +138,22 @@ local function drawGuidance()
     local n = state.navigation
 
     print(
-        "GUID: " ..
-        (g.online and "ONLINE" or "OFFLINE")
+        "STATUS: " ..
+        status(g.status)
     )
 
     print("")
 
-    print("NAVIGATION")
+    print("INPUT")
 
     print(
-        "BRG " ..
+        "BRG  " ..
         fmtAngle(n.bearing) ..
         " deg"
     )
 
     print(
-        "REL " ..
+        "REL  " ..
         fmtAngle(n.relativeAngle) ..
         " deg"
     )
@@ -144,6 +166,11 @@ local function drawGuidance()
     print(
         "DIST " ..
         fmt(n.distance)
+    )
+
+    print(
+        "CLOS " ..
+        fmt(n.closureRate)
     )
 
     print("")
@@ -163,7 +190,7 @@ local function drawGuidance()
 end
 
 --------------------------------------------------
--- ENGINE PAGE
+-- THRUSTER
 --------------------------------------------------
 
 local function drawEngine()
@@ -174,8 +201,16 @@ local function drawEngine()
     local g = state.guidance
 
     print(
-        "ENG: " ..
-        (t.online and "ONLINE" or "OFFLINE")
+        "STATUS: " ..
+        status(t.status)
+    )
+
+    print("")
+
+    print("SYSTEM MODE")
+
+    print(
+        state.system.mode
     )
 
     print("")
@@ -235,7 +270,7 @@ local function drawEngine()
 end
 
 --------------------------------------------------
--- SYSTEM PAGE
+-- SYSTEM
 --------------------------------------------------
 
 local function drawSystem()
@@ -243,24 +278,38 @@ local function drawSystem()
     header("SYSTEM")
 
     print(
-        "NAV " ..
-        (state.navigation.online
-        and "OK"
-        or "OFF")
+        "MODE: " ..
+        state.system.mode
+    )
+
+    print(
+        "STATUS: " ..
+        state.system.status
+    )
+
+    print("")
+
+    print("SUBSYSTEMS")
+
+    print(
+        "NAV  " ..
+        status(
+            state.navigation.status
+        )
     )
 
     print(
         "GUID " ..
-        (state.guidance.online
-        and "OK"
-        or "OFF")
+        status(
+            state.guidance.status
+        )
     )
 
     print(
-        "ENG " ..
-        (state.thruster.online
-        and "OK"
-        or "OFF")
+        "ENG  " ..
+        status(
+            state.thruster.status
+        )
     )
 
     print("")
@@ -312,27 +361,32 @@ local function inputCoordinate(axis)
     print("----------------------")
     print("")
 
-    print("Enter " .. axis .. " coordinate:")
+    print(
+        "Enter " ..
+        axis ..
+        " coordinate:"
+    )
+
     print("")
 
     write("> ")
 
     local value = read()
 
-    local number = tonumber(value)
+    local number =
+        tonumber(value)
 
     if number == nil then
 
         print("")
         print("INVALID NUMBER")
+
         sleep(1)
 
         return nil
-
     end
 
     return number
-
 end
 
 --------------------------------------------------
@@ -343,23 +397,29 @@ local function setImpactPoint()
 
     inputMode = true
 
-    local x = inputCoordinate("X")
+    local x =
+        inputCoordinate("X")
 
     if x == nil then
+
         inputMode = false
         return
     end
 
-    local y = inputCoordinate("Y")
+    local y =
+        inputCoordinate("Y")
 
     if y == nil then
+
         inputMode = false
         return
     end
 
-    local z = inputCoordinate("Z")
+    local z =
+        inputCoordinate("Z")
 
     if z == nil then
+
         inputMode = false
         return
     end
@@ -376,10 +436,9 @@ local function setImpactPoint()
     print("IMPACT POINT")
     print("----------------------")
     print("")
-
     print("SAVED")
-
     print("")
+
     print("X " .. fmt(x))
     print("Y " .. fmt(y))
     print("Z " .. fmt(z))
@@ -390,7 +449,6 @@ local function setImpactPoint()
     sleep(1)
 
     inputMode = false
-
 end
 
 --------------------------------------------------
@@ -420,7 +478,6 @@ local function draw()
         drawSystem()
 
     end
-
 end
 
 --------------------------------------------------
@@ -432,15 +489,11 @@ local function displayLoop()
     while state.system.running do
 
         if not inputMode then
-
             draw()
-
         end
 
         sleep(0.1)
-
     end
-
 end
 
 --------------------------------------------------
@@ -456,9 +509,7 @@ local function inputLoop()
 
         if inputMode then
 
-            -- Coordinate input uses read().
-            -- Keyboard events are handled by read(),
-            -- so navigation keys are ignored here.
+            -- read() handles coordinate input.
 
         elseif key == keys.left then
 
@@ -485,11 +536,8 @@ local function inputLoop()
             state.system.running = false
 
             return
-
         end
-
     end
-
 end
 
 --------------------------------------------------
