@@ -1,6 +1,7 @@
 -- Navigation and flight sensor module
+-- Create: Aeronautics / Create: Avionics
+-- CC:Tweaked
 -- Single-folder ComputerCraft compatible version
--- No require() is used.
 
 local navigationTable =
     peripheral.find("navigation_table")
@@ -10,6 +11,11 @@ local altitudeSensor =
 
 local gimbalSensor =
     peripheral.find("gimbal_sensor")
+
+
+--------------------------------------------------
+-- VELOCITY SENSORS
+--------------------------------------------------
 
 local velocitySensors = {
     x = nil,
@@ -28,42 +34,30 @@ for _, name in ipairs(peripheral.getNames()) do
         if sensor then
 
             local ok, axis =
-                pcall(
-                    sensor.getAxis
-                )
+                pcall(sensor.getAxis)
 
             if ok then
 
                 if axis == "x"
                     and not velocitySensors.x then
 
-                    velocitySensors.x =
-                        sensor
+                    velocitySensors.x = sensor
 
                 elseif axis == "y"
                     and not velocitySensors.y then
 
-                    velocitySensors.y =
-                        sensor
+                    velocitySensors.y = sensor
 
                 elseif axis == "z"
                     and not velocitySensors.z then
 
-                    velocitySensors.z =
-                        sensor
+                    velocitySensors.z = sensor
                 end
             end
         end
     end
 end
 
-local modem =
-    peripheral.find("modem")
-
-local gpsEnabled =
-    modem ~= nil
-
-local gpsTick = 0
 
 --------------------------------------------------
 -- MAIN
@@ -85,18 +79,14 @@ local function run(state)
             return nil
         end
 
-        local fn =
-            object[method]
+        local fn = object[method]
 
         if type(fn) ~= "function" then
             return nil
         end
 
         local ok, a, b, c, d =
-            pcall(
-                fn,
-                ...
-            )
+            pcall(fn, ...)
 
         if ok then
             return a, b, c, d
@@ -108,104 +98,6 @@ local function run(state)
         return nil
     end
 
-    --------------------------------------------------
-    -- POSITION
-    --------------------------------------------------
-
-    local function updateGPS()
-
-        -- If GPS is unavailable, preserve
-        -- the manually entered starting position.
-
-        if not gpsEnabled then
-
-            state.navigation.gps =
-                false
-
-            if state.startPosition
-                and state.startPosition.set then
-
-                state.navigation.position.x =
-                    state.startPosition.x
-
-                state.navigation.position.y =
-                    state.startPosition.y
-
-                state.navigation.position.z =
-                    state.startPosition.z
-
-                state.navigation.positionValid =
-                    true
-
-            else
-
-                state.navigation.positionValid =
-                    false
-            end
-
-            return
-        end
-
-        local now =
-            os.clock()
-
-        if now < gpsTick then
-            return
-        end
-
-        gpsTick =
-            now + 0.5
-
-        local x, y, z =
-            gps.locate(
-                0.5,
-                false
-            )
-
-        if x ~= nil then
-
-            state.navigation.position.x =
-                x
-
-            state.navigation.position.y =
-                y
-
-            state.navigation.position.z =
-                z
-
-            state.navigation.positionValid =
-                true
-
-            state.navigation.gps =
-                true
-
-        else
-
-            state.navigation.gps =
-                false
-
-            if state.startPosition
-                and state.startPosition.set then
-
-                state.navigation.position.x =
-                    state.startPosition.x
-
-                state.navigation.position.y =
-                    state.startPosition.y
-
-                state.navigation.position.z =
-                    state.startPosition.z
-
-                state.navigation.positionValid =
-                    true
-
-            else
-
-                state.navigation.positionValid =
-                    false
-            end
-        end
-    end
 
     --------------------------------------------------
     -- NAVIGATION TABLE
@@ -224,6 +116,9 @@ local function run(state)
         state.navigation.navigationTable =
             true
 
+
+        -- Target available
+
         local hasTarget =
             safeCall(
                 navigationTable,
@@ -235,6 +130,9 @@ local function run(state)
             state.navigation.hasNavTarget =
                 hasTarget
         end
+
+
+        -- Bearing
 
         local bearing =
             safeCall(
@@ -248,6 +146,9 @@ local function run(state)
                 bearing
         end
 
+
+        -- Relative angle
+
         local relativeAngle =
             safeCall(
                 navigationTable,
@@ -259,6 +160,9 @@ local function run(state)
             state.navigation.relativeAngle =
                 relativeAngle
         end
+
+
+        -- Vertical offset
 
         local elevation =
             safeCall(
@@ -272,6 +176,9 @@ local function run(state)
                 elevation
         end
 
+
+        -- Distance
+
         local distance =
             safeCall(
                 navigationTable,
@@ -283,6 +190,9 @@ local function run(state)
             state.navigation.distance =
                 distance
         end
+
+
+        -- Closure rate
 
         local closureRate =
             safeCall(
@@ -296,6 +206,9 @@ local function run(state)
                 closureRate
         end
 
+
+        -- Heading
+
         local heading =
             safeCall(
                 navigationTable,
@@ -308,6 +221,7 @@ local function run(state)
                 heading
         end
     end
+
 
     --------------------------------------------------
     -- MANUAL TARGET
@@ -324,6 +238,11 @@ local function run(state)
             return
         end
 
+
+        state.navigation.hasNavTarget =
+            true
+
+
         state.navigation.targetX =
             tonumber(target.x) or 0
 
@@ -333,6 +252,7 @@ local function run(state)
         state.navigation.targetZ =
             tonumber(target.z) or 0
     end
+
 
     --------------------------------------------------
     -- ALTITUDE SENSOR
@@ -351,6 +271,9 @@ local function run(state)
         state.navigation.altitudeSensor =
             true
 
+
+        -- Height
+
         local height =
             safeCall(
                 altitudeSensor,
@@ -363,6 +286,9 @@ local function run(state)
                 height
         end
 
+
+        -- Vertical speed
+
         local verticalSpeed =
             safeCall(
                 altitudeSensor,
@@ -374,6 +300,9 @@ local function run(state)
             state.navigation.verticalSpeed =
                 verticalSpeed
         end
+
+
+        -- Air pressure
 
         local pressure =
             safeCall(
@@ -388,8 +317,9 @@ local function run(state)
         end
     end
 
+
     --------------------------------------------------
-    -- VELOCITY SENSOR
+    -- VELOCITY SENSORS
     --------------------------------------------------
 
     local function updateVelocity()
@@ -412,6 +342,7 @@ local function run(state)
                 "getVelocity"
             )
 
+
         state.navigation.velocitySensorX =
             velocitySensors.x ~= nil
 
@@ -421,20 +352,27 @@ local function run(state)
         state.navigation.velocitySensorZ =
             velocitySensors.z ~= nil
 
+
         if vx ~= nil then
+
             state.navigation.velocity.x =
                 vx
         end
 
+
         if vy ~= nil then
+
             state.navigation.velocity.y =
                 vy
         end
 
+
         if vz ~= nil then
+
             state.navigation.velocity.z =
                 vz
         end
+
 
         local x =
             state.navigation.velocity.x or 0
@@ -445,6 +383,7 @@ local function run(state)
         local z =
             state.navigation.velocity.z or 0
 
+
         state.navigation.speed =
             math.sqrt(
                 x * x +
@@ -452,6 +391,7 @@ local function run(state)
                 z * z
             )
     end
+
 
     --------------------------------------------------
     -- GIMBAL SENSOR
@@ -470,6 +410,9 @@ local function run(state)
         state.navigation.gimbalSensor =
             true
 
+
+        -- Angles
+
         local angles =
             safeCall(
                 gimbalSensor,
@@ -484,6 +427,9 @@ local function run(state)
             state.navigation.roll =
                 angles[2] or 0
         end
+
+
+        -- Angular rates
 
         local rates =
             safeCall(
@@ -503,6 +449,9 @@ local function run(state)
                 rates[3] or 0
         end
 
+
+        -- Gravity vector
+
         local gravity =
             safeCall(
                 gimbalSensor,
@@ -520,6 +469,7 @@ local function run(state)
             state.navigation.gravityZ =
                 gravity[3] or 0
 
+
             local gx =
                 state.navigation.gravityX
 
@@ -529,6 +479,7 @@ local function run(state)
             local gz =
                 state.navigation.gravityZ
 
+
             state.navigation.gravityMagnitude =
                 math.sqrt(
                     gx * gx +
@@ -536,6 +487,9 @@ local function run(state)
                     gz * gz
                 )
         end
+
+
+        -- Linear acceleration
 
         local acceleration =
             safeCall(
@@ -556,8 +510,9 @@ local function run(state)
         end
     end
 
+
     --------------------------------------------------
-    -- STATUS
+    -- SYSTEM STATUS
     --------------------------------------------------
 
     local function updateStatus()
@@ -570,8 +525,10 @@ local function run(state)
             or velocitySensors.y ~= nil
             or velocitySensors.z ~= nil
 
+
         state.navigation.online =
             online
+
 
         if online then
 
@@ -584,9 +541,11 @@ local function run(state)
                 "OFFLINE"
         end
 
+
         state.navigation.lastUpdate =
             os.clock()
     end
+
 
     --------------------------------------------------
     -- MAIN LOOP
@@ -597,9 +556,8 @@ local function run(state)
         state.navigation.error =
             nil
 
-        updateStatus()
 
-        updateGPS()
+        updateStatus()
 
         updateNavigationTable()
 
@@ -611,8 +569,14 @@ local function run(state)
 
         updateGimbal()
 
+
         sleep(0.05)
     end
+
+
+    --------------------------------------------------
+    -- SHUTDOWN
+    --------------------------------------------------
 
     state.navigation.online =
         false
@@ -621,8 +585,9 @@ local function run(state)
         "OFFLINE"
 end
 
+
 --------------------------------------------------
--- MODULE EXPORT
+-- MODULE
 --------------------------------------------------
 
 return {
