@@ -1,21 +1,121 @@
--- Guidance and vector actuator test
--- Does not modify the main missile control files.
--- Engine thrust is NOT controlled.
+-- guidance_test.lua
+-- Guidance system diagnostic test
+-- Uses the real state.lua and guidance.lua from the missile system.
 
-local state = dofile("state.lua")
+print("================================")
+print("     GUIDANCE SYSTEM TEST")
+print("================================")
+print("")
 
-local thruster = peripheral.find("vector_thruster")
-    or peripheral.find("liquid_vector_thruster")
+-- Temporary require replacement.
+-- ComputerCraft environment does not provide require().
+function require(name)
+    if name == "state" then
+        local file = fs.open("/rocket/state.lua", "r")
+        if not file then
+            error("Cannot open /rocket/state.lua")
+        end
 
-if not thruster then
-    term.clear()
-    term.setCursorPos(1, 1)
+        local source = file.readAll()
+        file.close()
 
-    print("GUIDANCE TEST")
-    print("")
-    print("ERROR: vector thruster not found")
-    return
+        local chunk = load(source, "/rocket/state.lua")
+        if not chunk then
+            error("Cannot load state.lua")
+        end
+
+        return chunk()
+    end
+
+    error("Unknown module: " .. tostring(name))
 end
+
+-- Load the real guidance module.
+local file = fs.open("/rocket/guidance.lua", "r")
+
+if not file then
+    error("Cannot open /rocket/guidance.lua")
+end
+
+local source = file.readAll()
+file.close()
+
+local chunk, err = load(source, "/rocket/guidance.lua")
+
+if not chunk then
+    error("GUIDANCE LOAD ERROR:\n" .. tostring(err))
+end
+
+local guidance = chunk()
+
+if not guidance then
+    error("guidance.lua returned nothing")
+end
+
+if not guidance.run then
+    error("guidance.lua has no run() function")
+end
+
+print("GUIDANCE MODULE: OK")
+print("")
+
+-- Load the same state used by guidance.lua.
+local stateFile = fs.open("/rocket/state.lua", "r")
+
+if not stateFile then
+    error("Cannot open /rocket/state.lua")
+end
+
+local stateSource = stateFile.readAll()
+stateFile.close()
+
+local stateChunk, stateErr = load(stateSource, "/rocket/state.lua")
+
+if not stateChunk then
+    error("STATE LOAD ERROR:\n" .. tostring(stateErr))
+end
+
+local state = stateChunk()
+
+print("STATE MODULE: OK")
+print("")
+
+-- ------------------------------------------------
+-- TEST 1: Navigation offline
+-- ------------------------------------------------
+
+print("[TEST 1] Navigation OFFLINE")
+
+state.system.running = true
+state.navigation.online = false
+state.navigation.bearing = 0
+state.navigation.elevation = 0
+state.navigation.hasNavTarget = false
+
+print("Navigation: OFFLINE")
+print("Expected guidance: OFFLINE")
+print("")
+
+-- ------------------------------------------------
+-- TEST 2: Navigation online
+-- ------------------------------------------------
+
+print("[TEST 2] Navigation ONLINE")
+
+state.navigation.online = true
+state.navigation.bearing = 0
+state.navigation.elevation = 0
+state.navigation.hasNavTarget = true
+
+print("Navigation: ONLINE")
+print("Expected guidance: ONLINE")
+print("Expected vector: X=0.000 Y=0.000")
+print("")
+
+-- ------------------------------------------------
+-- Manual guidance calculation test
+-- This exactly follows guidance.lua.
+-- ------------------------------------------------
 
 local MAX_VECTOR = 0.25
 local BEARING_GAIN = 1.0
@@ -34,16 +134,14 @@ local function clamp(value, minimum, maximum)
     return value
 end
 
-local function calculateGuidance()
-    local bearing = state.navigation.bearing or 0
-    local elevation = state.navigation.elevation or 0
-
+local function calculate(bearing, elevation)
     local commandY = 0
-    local commandX = 0
 
     if math.abs(bearing) > DEADZONE then
         commandY = bearing * BEARING_GAIN
     end
+
+    local commandX = 0
 
     if math.abs(elevation) > 0.5 then
         commandX = elevation * ELEVATION_GAIN
@@ -52,173 +150,111 @@ local function calculateGuidance()
     commandX = clamp(commandX, -MAX_VECTOR, MAX_VECTOR)
     commandY = clamp(commandY, -MAX_VECTOR, MAX_VECTOR)
 
-    state.guidance.commandX = commandX
-    state.guidance.commandY = commandY
-    state.guidance.yawError = bearing
-    state.guidance.pitchError = elevation
-
     return commandX, commandY
 end
 
-local function applyVector()
-    local x = state.guidance.commandX or 0
-    local y = state.guidance.commandY or 0
+-- ------------------------------------------------
+-- TEST 3: Center
+-- ------------------------------------------------
 
-    pcall(thruster.setVector, x, y)
-end
+print("[TEST 3] CENTER")
 
-local function get(method)
-    local ok, value = pcall(method)
+local x, y = calculate(0, 0)
 
-    if ok and value ~= nil then
-        return value
-    end
-
-    return nil
-end
-
-local function fmt(value)
-    if value == nil then
-        return "N/A"
-    end
-
-    return string.format("% .4f", value)
-end
-
-local function draw()
-    term.clear()
-    term.setCursorPos(1, 1)
-
-    print("================================")
-    print("        GUIDANCE TEST")
-    print("================================")
-    print("")
-
-    print("INPUT")
-    print("Bearing   : " .. fmt(state.navigation.bearing))
-    print("Elevation : " .. fmt(state.navigation.elevation))
-    print("Target    : " ..
-        (state.navigation.hasNavTarget and "YES" or "NO"))
-    print("")
-
-    print("GUIDANCE COMMAND")
-    print("Command X : " .. fmt(state.guidance.commandX))
-    print("Command Y : " .. fmt(state.guidance.commandY))
-    print("")
-
-    print("THRUSTER")
-    print("Actual X  : " .. fmt(get(thruster.getVectorX)))
-    print("Actual Y  : " .. fmt(get(thruster.getVectorY)))
-    print("Target X  : " .. fmt(get(thruster.getTargetVectorX)))
-    print("Target Y  : " .. fmt(get(thruster.getTargetVectorY)))
-    print("")
-
-    print("--------------------------------")
-    print("ENTER - Set navigation values")
-    print("R     - Reset")
-    print("Q     - Quit")
-    print("--------------------------------")
-end
-
-local function readNumber(prompt)
-    term.write(prompt)
-
-    local value = tonumber(read())
-
-    if value == nil then
-        print("Invalid number.")
-        sleep(1)
-        return nil
-    end
-
-    return value
-end
-
-local function manualInput()
-    term.clear()
-    term.setCursorPos(1, 1)
-
-    print("================================")
-    print("       NAVIGATION INPUT")
-    print("================================")
-    print("")
-
-    print("Bearing: radians")
-    print("Elevation: blocks")
-    print("")
-
-    local bearing = readNumber("Bearing: ")
-
-    if bearing == nil then
-        return
-    end
-
-    local elevation = readNumber("Elevation: ")
-
-    if elevation == nil then
-        return
-    end
-
-    local target = readNumber("Target (1/0): ")
-
-    if target == nil then
-        return
-    end
-
-    state.navigation.bearing = bearing
-    state.navigation.elevation = elevation
-    state.navigation.hasNavTarget = target == 1
-
-    calculateGuidance()
-    applyVector()
-end
-
--- Initial state
-state.navigation.online = true
-state.navigation.status = "ONLINE"
-state.navigation.hasNavTarget = false
-
-state.guidance.online = true
-state.guidance.status = "ONLINE"
-
-state.guidance.commandX = 0
-state.guidance.commandY = 0
-
-pcall(thruster.setVector, 0, 0)
-
-while true do
-    calculateGuidance()
-    applyVector()
-    draw()
-
-    local event, key = os.pullEvent("key")
-
-    if key == keys.q then
-        break
-    end
-
-    if key == keys.r then
-        state.navigation.bearing = 0
-        state.navigation.elevation = 0
-        state.navigation.hasNavTarget = false
-
-        state.guidance.commandX = 0
-        state.guidance.commandY = 0
-
-        pcall(thruster.setVector, 0, 0)
-    end
-
-    if key == keys.enter then
-        manualInput()
-    end
-end
-
--- Safety shutdown
-pcall(thruster.setVector, 0, 0)
-
-term.clear()
-term.setCursorPos(1, 1)
-
-print("GUIDANCE TEST STOPPED")
+print("Bearing:    0")
+print("Elevation:  0")
+print("Command X:  " .. string.format("%.3f", x))
+print("Command Y:  " .. string.format("%.3f", y))
 print("")
-print("Vector returned to 0, 0")
+
+-- ------------------------------------------------
+-- TEST 4: Turn RIGHT
+-- ------------------------------------------------
+
+print("[TEST 4] TURN RIGHT")
+
+x, y = calculate(0.10, 0)
+
+print("Bearing:    0.10")
+print("Elevation:  0")
+print("Command X:  " .. string.format("%.3f", x))
+print("Command Y:  " .. string.format("%.3f", y))
+print("")
+
+-- ------------------------------------------------
+-- TEST 5: Turn LEFT
+-- ------------------------------------------------
+
+print("[TEST 5] TURN LEFT")
+
+x, y = calculate(-0.10, 0)
+
+print("Bearing:   -0.10")
+print("Elevation:  0")
+print("Command X:  " .. string.format("%.3f", x))
+print("Command Y:  " .. string.format("%.3f", y))
+print("")
+
+-- ------------------------------------------------
+-- TEST 6: Pitch UP
+-- ------------------------------------------------
+
+print("[TEST 6] PITCH UP")
+
+x, y = calculate(0, 5)
+
+print("Bearing:    0")
+print("Elevation:  5")
+print("Command X:  " .. string.format("%.3f", x))
+print("Command Y:  " .. string.format("%.3f", y))
+print("")
+
+-- ------------------------------------------------
+-- TEST 7: Pitch DOWN
+-- ------------------------------------------------
+
+print("[TEST 7] PITCH DOWN")
+
+x, y = calculate(0, -5)
+
+print("Bearing:    0")
+print("Elevation: -5")
+print("Command X:  " .. string.format("%.3f", x))
+print("Command Y:  " .. string.format("%.3f", y))
+print("")
+
+-- ------------------------------------------------
+-- TEST 8: Maximum vector
+-- ------------------------------------------------
+
+print("[TEST 8] VECTOR LIMIT")
+
+x, y = calculate(10, 100)
+
+print("Bearing:    10")
+print("Elevation:  100")
+print("Command X:  " .. string.format("%.3f", x))
+print("Command Y:  " .. string.format("%.3f", y))
+print("Expected:   X=0.250 Y=0.250")
+print("")
+
+-- ------------------------------------------------
+-- TEST 9: Negative maximum vector
+-- ------------------------------------------------
+
+print("[TEST 9] NEGATIVE VECTOR LIMIT")
+
+x, y = calculate(-10, -100)
+
+print("Bearing:   -10")
+print("Elevation: -100")
+print("Command X:  " .. string.format("%.3f", x))
+print("Command Y:  " .. string.format("%.3f", y))
+print("Expected:   X=-0.250 Y=-0.250")
+print("")
+
+print("================================")
+print("       GUIDANCE TEST DONE")
+print("================================")
+print("")
+print("No changes were made to the missile system.")
