@@ -1,7 +1,7 @@
 -- Rocket module execution test
 -- Does not modify the main missile control programs.
 
-local state = require("/rocket/state")
+local state = require("state")
 
 state.system.running = true
 
@@ -17,8 +17,8 @@ print("")
 --------------------------------------------------
 
 local modules = {
-    navigation = "/rocket/navigation.lua",
-    actuator = "/rocket/actuator.lua"
+    navigation = "navigation.lua",
+    actuator = "actuator.lua"
 }
 
 local loaded = {}
@@ -117,6 +117,7 @@ parallel.waitForAny(
 
         print("")
         print("Updates:")
+
         print(
             "Navigation = " ..
             tostring(
@@ -140,7 +141,9 @@ parallel.waitForAny(
                 os.pullEvent("key")
 
             if key == keys.q then
+
                 state.system.running = false
+
             end
 
         end
