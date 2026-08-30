@@ -1,44 +1,31 @@
 -- Guidance system test
--- Tests the real guidance.lua and actuator.lua.
--- Engine thrust remains disabled.
+-- Tests the real guidance and actuator modules.
+-- Engine thrust is NOT controlled by this test.
 
 local state = require("state")
+local guidance = require("guidance")
+local actuator = require("actuator")
 
--- Start the shared system state.
 state.system.running = true
 state.system.mode = "GUIDANCE TEST"
+state.system.status = "ONLINE"
 
--- Navigation must appear online for guidance.lua to calculate commands.
+-- Enable navigation input manually.
 state.navigation.online = true
-
-local function clamp(value, minimum, maximum)
-    if value < minimum then
-        return minimum
-    end
-
-    if value > maximum then
-        return maximum
-    end
-
-    return value
-end
+state.navigation.status = "ONLINE"
 
 local function fmt(value)
     if value == nil then
         return "N/A"
     end
 
-    return string.format("% .3f", value)
+    return string.format("% .4f", value)
 end
 
-local function setNavigation(bearing, elevation)
+local function setInput(bearing, elevation, target)
     state.navigation.bearing = bearing
     state.navigation.elevation = elevation
-end
-
-local function clearNavigation()
-    state.navigation.bearing = 0
-    state.navigation.elevation = 0
+    state.navigation.hasNavTarget = target
 end
 
 local function draw()
@@ -53,180 +40,110 @@ local function draw()
     print("NAVIGATION INPUT")
     print("Bearing   : " .. fmt(state.navigation.bearing))
     print("Elevation : " .. fmt(state.navigation.elevation))
+    print("Target    : " ..
+        (state.navigation.hasNavTarget and "YES" or "NO"))
     print("")
 
-    print("GUIDANCE COMMAND")
+    print("GUIDANCE")
+    print("Status    : " .. tostring(state.guidance.status))
+    print("Active    : " ..
+        (state.guidance.active and "YES" or "NO"))
     print("Command X : " .. fmt(state.guidance.commandX))
     print("Command Y : " .. fmt(state.guidance.commandY))
     print("")
 
-    print("LIMIT")
-    print("Maximum   : +/-0.250")
+    print("THRUSTER")
+    print("Status    : " .. tostring(state.thruster.status))
+    print("Vector X  : " .. fmt(state.thruster.vectorX))
+    print("Vector Y  : " .. fmt(state.thruster.vectorY))
+    print("Target X  : " .. fmt(state.thruster.targetVectorX))
+    print("Target Y  : " .. fmt(state.thruster.targetVectorY))
     print("")
 
-    print("STATUS")
-    print("Navigation: " ..
-        (state.navigation.online and "ONLINE" or "OFFLINE"))
-
-    print("Guidance  : " ..
-        (state.guidance.online and "ONLINE" or "OFFLINE"))
-
-    print("Thruster  : " ..
-        (state.thruster.online and "ONLINE" or "OFFLINE"))
-
-    print("")
     print("--------------------------------")
-    print("ENTER - Set bearing/elevation")
+    print("ENTER - Manual input")
     print("R     - Reset")
     print("Q     - Quit")
     print("--------------------------------")
 end
 
 local function readNumber(prompt)
-    term.setCursorPos(1, 17)
-    term.clearLine()
     term.write(prompt)
 
     local input = read()
     local value = tonumber(input)
 
     if not value then
+        print("Invalid number.")
+        sleep(1)
         return nil
     end
 
     return value
 end
 
-local function setInput()
+local function manualInput()
     term.clear()
     term.setCursorPos(1, 1)
 
     print("================================")
-    print("      SET NAVIGATION INPUT")
+    print("       MANUAL GUIDANCE TEST")
     print("================================")
     print("")
-    print("Values are in radians.")
+
+    print("Bearing is an angle in radians.")
+    print("Elevation is a signed vertical offset.")
     print("")
 
     local bearing = readNumber("Bearing: ")
 
     if bearing == nil then
-        print("")
-        print("Invalid bearing.")
-        sleep(1)
         return
     end
 
     local elevation = readNumber("Elevation: ")
 
     if elevation == nil then
-        print("")
-        print("Invalid elevation.")
-        sleep(1)
         return
     end
 
-    setNavigation(bearing, elevation)
+    local target = readNumber("Target (1=yes, 0=no): ")
 
-    print("")
-    print("Input applied.")
-    sleep(0.5)
-end
-
-local function runTestSequence()
-    local tests = {
-        {
-            name = "NEUTRAL",
-            bearing = 0,
-            elevation = 0
-        },
-        {
-            name = "RIGHT",
-            bearing = math.rad(10),
-            elevation = 0
-        },
-        {
-            name = "LEFT",
-            bearing = math.rad(-10),
-            elevation = 0
-        },
-        {
-            name = "FORWARD",
-            bearing = 0,
-            elevation = math.rad(10)
-        },
-        {
-            name = "BACKWARD",
-            bearing = 0,
-            elevation = math.rad(-10)
-        },
-        {
-            name = "RIGHT + FORWARD",
-            bearing = math.rad(10),
-            elevation = math.rad(10)
-        }
-    }
-
-    for _, test in ipairs(tests) do
-        setNavigation(test.bearing, test.elevation)
-
-        term.clear()
-        term.setCursorPos(1, 1)
-
-        print("================================")
-        print("      AUTOMATIC GUIDANCE TEST")
-        print("================================")
-        print("")
-        print("TEST: " .. test.name)
-        print("")
-        print("Bearing   : " .. fmt(test.bearing))
-        print("Elevation : " .. fmt(test.elevation))
-        print("")
-        print("Waiting for guidance...")
-        sleep(0.2)
-
-        print("")
-        print("Command X : " .. fmt(state.guidance.commandX))
-        print("Command Y : " .. fmt(state.guidance.commandY))
-
-        sleep(1)
+    if target == nil then
+        return
     end
 
-    setNavigation(0, 0)
+    setInput(
+        bearing,
+        elevation,
+        target == 1
+    )
 
-    print("")
-    print("Test sequence completed.")
-    sleep(1)
+    sleep(0.2)
 end
 
--- Load the real guidance and actuator modules.
-parallel.waitForAll(
+local function guidanceTask()
+    local ok, err = pcall(guidance.run)
+
+    if not ok then
+        state.system.error = "GUIDANCE: " .. tostring(err)
+        state.system.running = false
+    end
+end
+
+local function actuatorTask()
+    local ok, err = pcall(actuator.run)
+
+    if not ok then
+        state.system.error = "ACTUATOR: " .. tostring(err)
+        state.system.running = false
+    end
+end
+
+parallel.waitForAny(
+    guidanceTask,
+    actuatorTask,
     function()
-        guidance = loadfile("guidance.lua")
-
-        if not guidance then
-            error("Cannot load guidance.lua")
-        end
-
-        guidance()
-    end,
-
-    function()
-        actuator = loadfile("actuator.lua")
-
-        if not actuator then
-            error("Cannot load actuator.lua")
-        end
-
-        actuator()
-    end,
-
-    function()
-        -- Give both modules time to initialize.
-        sleep(0.2)
-
-        runTestSequence()
-
         while state.system.running do
             draw()
 
@@ -238,31 +155,30 @@ parallel.waitForAll(
             end
 
             if key == keys.r then
-                clearNavigation()
-                state.guidance.commandX = 0
-                state.guidance.commandY = 0
+                setInput(0, 0, false)
             end
 
             if key == keys.enter then
-                setInput()
+                manualInput()
             end
         end
     end
 )
 
--- Safety reset.
+-- Safety shutdown.
 state.system.running = false
+
 state.navigation.online = false
+state.navigation.hasNavTarget = false
 
 state.guidance.commandX = 0
 state.guidance.commandY = 0
-
-clearNavigation()
 
 term.clear()
 term.setCursorPos(1, 1)
 
 print("GUIDANCE TEST STOPPED")
 print("")
-print("Command X: 0.000")
-print("Command Y: 0.000")
+print("Vector command reset to:")
+print("X: 0.0000")
+print("Y: 0.0000")
