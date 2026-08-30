@@ -1,269 +1,123 @@
--- Impact Point Configuration
---
--- Usage:
---
--- target
--- target set X Y Z
--- target show
--- target clear
+-- Target coordinate storage and control
+-- Coordinates are stored in target.cfg and mirrored into shared state.
+
+local state = require("state")
 
 local TARGET_FILE = "target.cfg"
 
---------------------------------------------------
--- LOAD
---------------------------------------------------
+local function defaultTarget()
+    return {
+        x = 0,
+        y = 0,
+        z = 0,
+        set = false,
+        revision = 0
+    }
+end
 
 local function loadTarget()
-
     if not fs.exists(TARGET_FILE) then
-
-        return {
-            x = 0,
-            y = 0,
-            z = 0,
-            set = false,
-            revision = 0
-        }
-
+        return defaultTarget()
     end
 
-    local file =
-        fs.open(
-            TARGET_FILE,
-            "r"
-        )
-
+    local file = fs.open(TARGET_FILE, "r")
     if not file then
-        error(
-            "Cannot open target.cfg"
-        )
+        return defaultTarget()
     end
 
-    local data =
-        textutils.unserialize(
-            file.readAll()
-        )
-
+    local content = file.readAll()
     file.close()
 
+    local data = textutils.unserialize(content)
     if type(data) ~= "table" then
-
-        return {
-            x = 0,
-            y = 0,
-            z = 0,
-            set = false,
-            revision = 0
-        }
-
+        return defaultTarget()
     end
+
+    data.x = tonumber(data.x) or 0
+    data.y = tonumber(data.y) or 0
+    data.z = tonumber(data.z) or 0
+    data.set = data.set == true
+    data.revision = tonumber(data.revision) or 0
 
     return data
 end
 
---------------------------------------------------
--- SAVE
---------------------------------------------------
-
 local function saveTarget(data)
-
-    local file =
-        fs.open(
-            TARGET_FILE,
-            "w"
-        )
-
+    local file = fs.open(TARGET_FILE, "w")
     if not file then
-        error(
-            "Cannot write target.cfg"
-        )
+        return false, "Cannot write target.cfg"
     end
 
-    file.write(
-        textutils.serialize(data)
-    )
-
+    file.write(textutils.serialize(data))
     file.close()
+    return true
 end
 
---------------------------------------------------
--- SET TARGET
---------------------------------------------------
+local function apply(data)
+    state.target.x = data.x
+    state.target.y = data.y
+    state.target.z = data.z
+    state.target.set = data.set
+    state.target.revision = data.revision
+end
+
+local function load()
+    local data = loadTarget()
+    apply(data)
+    return data
+end
 
 local function setTarget(x, y, z)
-
     x = tonumber(x)
     y = tonumber(y)
     z = tonumber(z)
 
     if not x or not y or not z then
-
-        print(
-            "ERROR: coordinates must be numbers."
-        )
-
-        return
+        return false, "Coordinates must be numbers."
     end
 
-    local data =
-        loadTarget()
-
+    local data = loadTarget()
     data.x = x
     data.y = y
     data.z = z
-
     data.set = true
+    data.revision = (tonumber(data.revision) or 0) + 1
 
-    data.revision =
-        (tonumber(data.revision) or 0)
-        + 1
-
-    saveTarget(data)
-
-    print("")
-    print("====================")
-    print("IMPACT POINT SET")
-    print("====================")
-    print("X: " .. x)
-    print("Y: " .. y)
-    print("Z: " .. z)
-    print("REVISION: " .. data.revision)
-    print("")
-end
-
---------------------------------------------------
--- CLEAR TARGET
---------------------------------------------------
-
-local function clearTarget()
-
-    local data =
-        loadTarget()
-
-    data.set = false
-
-    data.revision =
-        (tonumber(data.revision) or 0)
-        + 1
-
-    saveTarget(data)
-
-    print("")
-    print("IMPACT POINT CLEARED")
-    print("")
-end
-
---------------------------------------------------
--- SHOW TARGET
---------------------------------------------------
-
-local function showTarget()
-
-    local data =
-        loadTarget()
-
-    print("")
-    print("====================")
-    print("IMPACT POINT")
-    print("====================")
-
-    if data.set == false then
-
-        print("NOT SET")
-
-    else
-
-        print(
-            "X: " ..
-            tostring(data.x)
-        )
-
-        print(
-            "Y: " ..
-            tostring(data.y)
-        )
-
-        print(
-            "Z: " ..
-            tostring(data.z)
-        )
-
-        print(
-            "REVISION: " ..
-            tostring(data.revision or 0)
-        )
-
+    local ok, err = saveTarget(data)
+    if not ok then
+        return false, err
     end
 
-    print("")
+    apply(data)
+    return true, nil, data.revision
 end
 
---------------------------------------------------
--- INTERACTIVE MODE
---------------------------------------------------
+local function clearTarget()
+    local data = loadTarget()
+    data.set = false
+    data.revision = (tonumber(data.revision) or 0) + 1
 
-local function interactive()
+    local ok, err = saveTarget(data)
+    if not ok then
+        return false, err
+    end
 
-    print("")
-    print("====================")
-    print("IMPACT POINT")
-    print("====================")
-
-    write("X: ")
-    local x = read()
-
-    write("Y: ")
-    local y = read()
-
-    write("Z: ")
-    local z = read()
-
-    setTarget(x, y, z)
+    apply(data)
+    return true
 end
 
---------------------------------------------------
--- COMMAND LINE
---------------------------------------------------
+local function run()
+    load()
 
-local args = {...}
-
-if #args == 0 then
-
-    interactive()
-    return
-
+    while state.system.running do
+        sleep(0.5)
+    end
 end
 
-local command =
-    string.lower(
-        tostring(args[1])
-    )
-
-if command == "set" then
-
-    setTarget(
-        args[2],
-        args[3],
-        args[4]
-    )
-
-elseif command == "show" then
-
-    showTarget()
-
-elseif command == "clear" then
-
-    clearTarget()
-
-else
-
-    print("")
-    print("TARGET COMMANDS")
-    print("")
-    print("target")
-    print("target set X Y Z")
-    print("target show")
-    print("target clear")
-    print("")
-
-end
+return {
+    load = load,
+    save = saveTarget,
+    set = setTarget,
+    clear = clearTarget,
+    run = run
+}

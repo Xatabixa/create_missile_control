@@ -2,6 +2,7 @@
 -- Arrow keys / number keys switch pages. Q shuts down the system.
 
 local state = require("state")
+local target = require("target")
 
 local screen = nil
 local width = 0
@@ -55,7 +56,7 @@ end
 local function header(title)
     writeLine(1, "=== MISSILE CONTROL SYSTEM ===")
     writeLine(2, "MODE: " .. tostring(state.system.mode))
-    writeLine(3, "[1] NAV  [2] GUID  [3] ENG  [4] SYS")
+    writeLine(3, "[1] NAV  [2] GUID  [3] ENG  [4] SYS  [I] TARGET")
     writeLine(4, "--------------------------------")
     writeLine(5, title)
     writeLine(6, "--------------------------------")
@@ -132,13 +133,16 @@ local function drawSystem()
     writeLine(10, "THRUSTER   " .. (state.thruster.online and "ONLINE" or "OFFLINE"))
     writeLine(11, "DISPLAY    ONLINE")
     writeLine(13, "CONTROL: " .. (state.system.controlEnabled and "ENABLED" or "DISABLED"))
-    writeLine(14, "GPS:      " .. (state.navigation.gps and "ONLINE" or "OFFLINE"))
-    writeLine(15, "NAV TABLE:" .. (state.navigation.navigationTable and " ONLINE" or " OFFLINE"))
-    writeLine(16, "ALT SENSOR:" .. (state.navigation.altitudeSensor and " ONLINE" or " OFFLINE"))
-    writeLine(17, "GIMBAL:    " .. (state.navigation.gimbalSensor and "ONLINE" or "OFFLINE"))
-    writeLine(18, "VEL X/Y/Z: " .. (state.navigation.velocitySensorX and "X" or "-") .. "/" .. (state.navigation.velocitySensorY and "Y" or "-") .. "/" .. (state.navigation.velocitySensorZ and "Z" or "-"))
-    writeLine(20, "[1] NAV  [2] GUID  [3] ENG  [4] SYS")
-    writeLine(21, "ARROWS = PAGE    Q = SHUTDOWN")
+    writeLine(14, "TARGET: " .. (state.target.set and "SET" or "NOT SET"))
+    writeLine(15, "X: " .. fmt(state.target.x, 1) .. "  Y: " .. fmt(state.target.y, 1))
+    writeLine(16, "Z: " .. fmt(state.target.z, 1) .. "  REV: " .. tostring(state.target.revision or 0))
+    writeLine(18, "GPS:      " .. (state.navigation.gps and "ONLINE" or "OFFLINE"))
+    writeLine(19, "NAV TABLE:" .. (state.navigation.navigationTable and " ONLINE" or " OFFLINE"))
+    writeLine(20, "ALT SENSOR:" .. (state.navigation.altitudeSensor and " ONLINE" or " OFFLINE"))
+    writeLine(21, "GIMBAL:    " .. (state.navigation.gimbalSensor and "ONLINE" or "OFFLINE"))
+    writeLine(22, "VEL X/Y/Z: " .. (state.navigation.velocitySensorX and "X" or "-") .. "/" .. (state.navigation.velocitySensorY and "Y" or "-") .. "/" .. (state.navigation.velocitySensorZ and "Z" or "-"))
+    writeLine(24, "[1] NAV  [2] GUID  [3] ENG  [4] SYS")
+    writeLine(25, "I = SET TARGET    Q = SHUTDOWN")
 
     if state.system.error then
         writeLine(height, "ERROR: " .. tostring(state.system.error))
@@ -159,6 +163,62 @@ local function draw()
     end
 end
 
+local function setImpactPoint()
+    -- Temporarily use the computer terminal for coordinate entry.
+    term.clear()
+    term.setCursorPos(1, 1)
+
+    print("================================")
+    print("        IMPACT POINT")
+    print("================================")
+    print("")
+    print("Enter target coordinates.")
+    print("")
+
+    write("X: ")
+    local x = tonumber(read())
+    if not x then
+        print("Invalid X coordinate.")
+        sleep(1)
+        return
+    end
+
+    write("Y: ")
+    local y = tonumber(read())
+    if not y then
+        print("Invalid Y coordinate.")
+        sleep(1)
+        return
+    end
+
+    write("Z: ")
+    local z = tonumber(read())
+    if not z then
+        print("Invalid Z coordinate.")
+        sleep(1)
+        return
+    end
+
+    local ok, err, revision = target.set(x, y, z)
+
+    print("")
+    if ok then
+        print("IMPACT POINT SET")
+        print("")
+        print("X: " .. tostring(x))
+        print("Y: " .. tostring(y))
+        print("Z: " .. tostring(z))
+        print("REVISION: " .. tostring(revision or state.target.revision))
+    else
+        print("ERROR: " .. tostring(err))
+    end
+
+    print("")
+    print("Press any key to return.")
+    os.pullEvent("key")
+    draw()
+end
+
 local function selectPage(newPage)
     if newPage < 1 then newPage = 1 end
     if newPage > 4 then newPage = 4 end
@@ -175,6 +235,8 @@ local function handleKey(key)
         selectPage(3)
     elseif key == keys.down or key == keys.four then
         selectPage(4)
+    elseif key == keys.i then
+        setImpactPoint()
     elseif key == keys.q then
         state.system.status = "SHUTTING DOWN"
         state.system.running = false
@@ -190,6 +252,7 @@ end
 
 local function run()
     openScreen()
+    target.load()
     state.display.online = true
     draw()
 
