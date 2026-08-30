@@ -1,15 +1,17 @@
--- Automatic guidance controller
+-- Guidance system
 -- Single-folder ComputerCraft compatible version
 
 local MAX_VECTOR = 0.25
+local BEARING_GAIN = 1.0
+local ELEVATION_GAIN = 0.05
+local DEADZONE = math.rad(0.5)
 
-local BEARING_GAIN = 0.8
-local ELEVATION_GAIN = 0.015
+local function clamp(
+    value,
+    minimum,
+    maximum
+)
 
-local BEARING_DEADZONE = math.rad(0.5)
-local ELEVATION_DEADZONE = 0.5
-
-local function clamp(value, minimum, maximum)
     if value < minimum then
         return minimum
     end
@@ -21,66 +23,122 @@ local function clamp(value, minimum, maximum)
     return value
 end
 
-local function update(state)
-    local n = state.navigation
-    local g = state.guidance
-
-    if not n.online then
-        g.online = false
-        g.active = false
-        g.status = "OFFLINE"
-
-        g.commandX = 0
-        g.commandY = 0
-
-        return
-    end
-
-    g.online = true
-    g.status = "ONLINE"
-
-    local bearing = tonumber(n.bearing) or 0
-    local elevation = tonumber(n.elevation) or 0
-
-    g.yawError = bearing
-    g.pitchError = elevation
-
-    g.targetBearing = bearing
-    g.targetElevation = elevation
-
-    local commandY = 0
-    local commandX = 0
-
-    if math.abs(bearing) > BEARING_DEADZONE then
-        commandY = bearing * BEARING_GAIN
-    end
-
-    if math.abs(elevation) > ELEVATION_DEADZONE then
-        commandX = elevation * ELEVATION_GAIN
-    end
-
-    commandX = clamp(
-        commandX,
-        -MAX_VECTOR,
-        MAX_VECTOR
-    )
-
-    commandY = clamp(
-        commandY,
-        -MAX_VECTOR,
-        MAX_VECTOR
-    )
-
-    g.commandX = commandX
-    g.commandY = commandY
-
-    g.active =
-        n.hasNavTarget == true
-end
-
 local function run(state)
+
+    state.guidance =
+        state.guidance or {
+            online = false,
+            status = "OFFLINE",
+            active = false,
+            commandX = 0,
+            commandY = 0,
+            yawError = 0,
+            pitchError = 0
+        }
+
+    local function update()
+
+        if state.navigation == nil then
+
+            state.guidance.online =
+                false
+
+            state.guidance.active =
+                false
+
+            state.guidance.status =
+                "OFFLINE"
+
+            state.guidance.commandX =
+                0
+
+            state.guidance.commandY =
+                0
+
+            return
+        end
+
+        if not state.navigation.online then
+
+            state.guidance.online =
+                false
+
+            state.guidance.active =
+                false
+
+            state.guidance.status =
+                "OFFLINE"
+
+            state.guidance.commandX =
+                0
+
+            state.guidance.commandY =
+                0
+
+            return
+        end
+
+        state.guidance.online =
+            true
+
+        state.guidance.status =
+            "ONLINE"
+
+        local bearing =
+            state.navigation.bearing or 0
+
+        local elevation =
+            state.navigation.elevation or 0
+
+        state.guidance.yawError =
+            bearing
+
+        state.guidance.pitchError =
+            elevation
+
+        local commandY = 0
+
+        if math.abs(bearing) >
+            DEADZONE then
+
+            commandY =
+                bearing *
+                BEARING_GAIN
+        end
+
+        local commandX = 0
+
+        if math.abs(elevation) >
+            0.5 then
+
+            commandX =
+                elevation *
+                ELEVATION_GAIN
+        end
+
+        state.guidance.commandX =
+            clamp(
+                commandX,
+                -MAX_VECTOR,
+                MAX_VECTOR
+            )
+
+        state.guidance.commandY =
+            clamp(
+                commandY,
+                -MAX_VECTOR,
+                MAX_VECTOR
+            )
+
+        state.guidance.active =
+            state.navigation.hasNavTarget ==
+            true
+    end
+
     while state.system.running do
-        update(state)
+
+        update()
+
         sleep(0.05)
     end
 

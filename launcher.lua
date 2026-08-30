@@ -1,5 +1,5 @@
 -- Missile Control System Launcher
--- Single-folder ComputerCraft compatible version
+-- Single-folder ComputerCraft version
 
 term.clear()
 term.setCursorPos(1, 1)
@@ -11,58 +11,71 @@ print("")
 print("Loading control system...")
 print("")
 
--- Load shared state
-local state = dofile("state.lua")
+local stateChunk, stateError = loadfile("state.lua")
+
+if not stateChunk then
+    error("STATE LOAD ERROR: " .. tostring(stateError))
+end
+
+local ok, state = pcall(stateChunk)
+
+if not ok then
+    error("STATE ERROR: " .. tostring(state))
+end
 
 if type(state) ~= "table" then
     error("STATE MODULE INVALID")
 end
 
--- Load module
 local function loadModule(filename)
     local chunk, err = loadfile(filename)
 
     if not chunk then
-        error("LOAD ERROR " .. filename .. ": " .. tostring(err))
+        error(
+            "LOAD ERROR " ..
+            filename ..
+            ": " ..
+            tostring(err)
+        )
     end
 
-    local ok, result = pcall(chunk)
+    local success, module = pcall(chunk)
 
-    if not ok then
-        error("MODULE ERROR " .. filename .. ": " .. tostring(result))
+    if not success then
+        error(
+            "MODULE ERROR " ..
+            filename ..
+            ": " ..
+            tostring(module)
+        )
     end
 
-    if type(result) ~= "table" then
-        error("MODULE RETURN ERROR " .. filename)
+    if type(module) ~= "table" then
+        error(
+            "INVALID MODULE " ..
+            filename
+        )
     end
 
-    return result
+    if type(module.run) ~= "function" then
+        error(
+            "NO RUN FUNCTION " ..
+            filename
+        )
+    end
+
+    return module
 end
 
 local navigation = loadModule("navigation.lua")
 local guidance = loadModule("guidance.lua")
 local actuator = loadModule("actuator.lua")
+local target = loadModule("target.lua")
 local display = loadModule("display.lua")
-
-if type(navigation.run) ~= "function" then
-    error("NAVIGATION MODULE INVALID")
-end
-
-if type(guidance.run) ~= "function" then
-    error("GUIDANCE MODULE INVALID")
-end
-
-if type(actuator.run) ~= "function" then
-    error("ACTUATOR MODULE INVALID")
-end
-
-if type(display.run) ~= "function" then
-    error("DISPLAY MODULE INVALID")
-end
 
 state.system.running = true
 state.system.mode = "DRY TEST"
-state.system.status = "ONLINE"
+state.system.status = "STARTING"
 state.system.controlEnabled = false
 state.system.error = nil
 
@@ -70,103 +83,85 @@ print("STATE ............ OK")
 print("NAVIGATION ....... OK")
 print("GUIDANCE ......... OK")
 print("ACTUATOR ......... OK")
+print("TARGET ........... OK")
 print("DISPLAY .......... OK")
 print("")
 print("Starting systems...")
 print("")
 
-local function runNavigation()
-    local ok, err = pcall(
-        navigation.run,
-        state
-    )
+local function navigationProcess()
+    local success, err =
+        pcall(navigation.run, state)
 
-    if not ok then
+    if not success then
         state.system.error =
             "NAVIGATION: " .. tostring(err)
 
         state.system.status = "FAULT"
         state.system.running = false
-
-        print(state.system.error)
     end
 end
 
-local function runGuidance()
-    local ok, err = pcall(
-        guidance.run,
-        state
-    )
+local function guidanceProcess()
+    local success, err =
+        pcall(guidance.run, state)
 
-    if not ok then
+    if not success then
         state.system.error =
             "GUIDANCE: " .. tostring(err)
 
         state.system.status = "FAULT"
         state.system.running = false
-
-        print(state.system.error)
     end
 end
 
-local function runActuator()
-    local ok, err = pcall(
-        actuator.run,
-        state
-    )
+local function actuatorProcess()
+    local success, err =
+        pcall(actuator.run, state)
 
-    if not ok then
+    if not success then
         state.system.error =
             "ACTUATOR: " .. tostring(err)
 
         state.system.status = "FAULT"
         state.system.running = false
-
-        print(state.system.error)
     end
 end
 
-local function runDisplay()
-    local ok, err = pcall(
-        display.run,
-        state
-    )
+local function targetProcess()
+    local success, err =
+        pcall(target.run, state)
 
-    if not ok then
+    if not success then
+        state.system.error =
+            "TARGET: " .. tostring(err)
+
+        state.system.status = "FAULT"
+        state.system.running = false
+    end
+end
+
+local function displayProcess()
+    local success, err =
+        pcall(display.run, state)
+
+    if not success then
         state.system.error =
             "DISPLAY: " .. tostring(err)
 
         state.system.status = "FAULT"
         state.system.running = false
-
-        print(state.system.error)
     end
 end
 
+state.system.status = "ONLINE"
+
 parallel.waitForAll(
-    function()
-        runModule("NAVIGATION", function()
-            navigation.run(state)
-        end)
-    end,
-
-    function()
-        runModule("GUIDANCE", function()
-            guidance.run(state)
-        end)
-    end,
-
-    function()
-        runModule("ACTUATOR", function()
-            actuator.run(state)
-        end)
-    end,
-
-    function()
-        runModule("DISPLAY", function()
-            display.run(state)
-        end)
-    end
+    navigationProcess,
+    guidanceProcess,
+    actuatorProcess,
+    targetProcess,
+    displayProcess
 )
 
 state.system.running = false
@@ -179,10 +174,20 @@ end
 term.clear()
 term.setCursorPos(1, 1)
 
-print("MISSILE SYSTEM STOPPED")
+print("================================")
+print("       MISSILE CONTROL")
+print("================================")
+print("")
 
 if state.system.error then
+    print("SYSTEM FAULT")
     print("")
-    print("ERROR:")
     print(state.system.error)
+else
+    print("SYSTEM STOPPED")
 end
+
+print("")
+print("Press any key...")
+
+os.pullEvent("key")
