@@ -1,12 +1,15 @@
 -- Guidance System
--- Uses live navigation data from the shared state.
--- Designed for dry testing before automatic actuator control.
+-- Single-folder ComputerCraft compatible version
+-- Uses live navigation_table data.
+-- Safe for dry testing: actuator control is NOT enabled here.
 
 local MAX_VECTOR = 0.25
 
+-- Gains
 local YAW_GAIN = 1.0
 local PITCH_GAIN = 0.05
 
+-- Deadzones
 local YAW_DEADZONE = math.rad(0.5)
 local PITCH_DEADZONE = math.rad(0.5)
 
@@ -57,13 +60,17 @@ local function run(state)
         }
 
     --------------------------------------------------
-    -- Main update
+    -- Main calculation
     --------------------------------------------------
 
     local function update()
 
         local navigation =
             state.navigation
+
+        --------------------------------------------------
+        -- Navigation unavailable
+        --------------------------------------------------
 
         if type(navigation) ~= "table" then
 
@@ -116,39 +123,79 @@ local function run(state)
             "ONLINE"
 
         --------------------------------------------------
-        -- YAW
-        --
-        -- IMPORTANT:
-        -- Use relativeAngle instead of bearing.
-        --
-        -- relativeAngle is updated by navigation.lua
-        -- from navigation_table:getRelativeAngleRad().
-        --
-        -- This value should change when the missile
-        -- rotates relative to the target.
+        -- TARGET STATUS
         --------------------------------------------------
 
-        local yawError =
-            tonumber(
-                navigation.relativeAngle
-            ) or 0
-
-        yawError =
-            normalizeAngle(
-                yawError
+        local targetSet =
+            (
+                type(state.target) == "table"
+                and state.target.set == true
             )
+
+        local navigationTarget =
+            navigation.hasNavTarget == true
+
+        state.guidance.active =
+            targetSet or navigationTarget
+
+        --------------------------------------------------
+        -- YAW GUIDANCE
+        --
+        -- bearing:
+        -- absolute direction from the navigation table
+        -- toward the target.
+        --
+        -- heading:
+        -- current missile heading.
+        --
+        -- yaw error:
+        -- target direction relative to missile heading.
+        --------------------------------------------------
+
+        local bearing =
+            tonumber(
+                navigation.bearing
+            )
+
+        local heading =
+            tonumber(
+                navigation.heading
+            )
+
+        local yawError = 0
+
+        if bearing ~= nil
+            and heading ~= nil then
+
+            yawError =
+                normalizeAngle(
+                    bearing - heading
+                )
+
+        else
+
+            -- Fallback if one value is unavailable.
+            yawError =
+                tonumber(
+                    navigation.relativeAngle
+                ) or 0
+
+            yawError =
+                normalizeAngle(
+                    yawError
+                )
+        end
 
         state.guidance.yawError =
             yawError
 
         --------------------------------------------------
-        -- PITCH
+        -- PITCH GUIDANCE
         --
-        -- navigation.elevation is a vertical offset,
-        -- not an angle.
+        -- elevation is vertical distance to target.
+        -- distance is total distance to target.
         --
-        -- Convert vertical offset and distance into
-        -- a desired elevation angle.
+        -- Calculate desired elevation angle.
         --------------------------------------------------
 
         local verticalOffset =
@@ -169,8 +216,8 @@ local function run(state)
             local horizontalDistance =
                 math.sqrt(
                     math.max(
-                        distance * distance -
-                        verticalOffset * verticalOffset,
+                        distance * distance
+                        - verticalOffset * verticalOffset,
                         0
                     )
                 )
@@ -267,23 +314,6 @@ local function run(state)
 
         state.guidance.commandY =
             commandY
-
-        --------------------------------------------------
-        -- Guidance activation
-        --
-        -- Our display target is accepted, but the
-        -- navigation table target is also accepted.
-        --------------------------------------------------
-
-        local localTarget =
-            type(state.target) == "table"
-            and state.target.set == true
-
-        local navigationTarget =
-            navigation.hasNavTarget == true
-
-        state.guidance.active =
-            localTarget or navigationTarget
     end
 
     --------------------------------------------------
