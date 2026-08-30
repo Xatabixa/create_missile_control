@@ -2,16 +2,19 @@
 -- Multi-engine vector-thrust control
 -- CC:Tweaked
 --
--- Controls ALL connected Liquid Vector Thrusters.
+-- Finds ALL connected vector thrusters.
 --
--- No require() is used.
--- launcher.lua passes shared state to run(state).
+-- Supported peripheral types:
+--   vector_thruster
+--   liquid_vector_thruster
+--   creative_vector_thruster
 
 --------------------------------------------------
 -- SETTINGS
 --------------------------------------------------
 
 local MAX_VECTOR = 0.25
+
 local UPDATE_INTERVAL = 0.05
 
 
@@ -45,22 +48,26 @@ end
 
 local function findThrusters()
 
-    local result = {}
+    local thrusters = {}
 
 
     for _, name in ipairs(
         peripheral.getNames()
     ) do
 
-        local ptype =
+        local pType =
             peripheral.getType(name)
 
 
-        if ptype ==
+        if pType ==
             "vector_thruster"
             or
-            ptype ==
-            "liquid_vector_thruster" then
+            pType ==
+            "liquid_vector_thruster"
+            or
+            pType ==
+            "creative_vector_thruster" then
+
 
             local device =
                 peripheral.wrap(name)
@@ -69,9 +76,10 @@ local function findThrusters()
             if device then
 
                 table.insert(
-                    result,
+                    thrusters,
                     {
                         name = name,
+                        type = pType,
                         device = device
                     }
                 )
@@ -83,16 +91,81 @@ local function findThrusters()
     end
 
 
-    return result
+    return thrusters
 end
 
 
 --------------------------------------------------
--- NEUTRAL
+-- WRITE ENGINE INFO INTO STATE
 --------------------------------------------------
 
-local function setNeutral(
+local function updateEngineList(
     state,
+    thrusters
+)
+
+    state.thruster.engineCount =
+        #thrusters
+
+
+    state.thruster.engines =
+        {}
+
+
+    for _, engine in ipairs(
+        thrusters
+    ) do
+
+        table.insert(
+            state.thruster.engines,
+            {
+                name = engine.name,
+                type = engine.type
+            }
+        )
+
+    end
+
+end
+
+
+--------------------------------------------------
+-- SAFE VECTOR SET
+--------------------------------------------------
+
+local function setVector(
+    engine,
+    x,
+    y
+)
+
+    if not engine then
+        return false
+    end
+
+
+    local ok =
+        pcall(
+            function()
+
+                engine.setVector(
+                    x,
+                    y
+                )
+
+            end
+        )
+
+
+    return ok
+end
+
+
+--------------------------------------------------
+-- SET ALL NEUTRAL
+--------------------------------------------------
+
+local function setAllNeutral(
     thrusters
 )
 
@@ -100,40 +173,19 @@ local function setNeutral(
         thrusters
     ) do
 
-        pcall(
-            function()
-
-                entry.device.setVector(
-                    0,
-                    0
-                )
-
-            end
+        setVector(
+            entry.device,
+            0,
+            0
         )
 
     end
-
-
-    state.thruster.targetVectorX =
-        0
-
-
-    state.thruster.targetVectorY =
-        0
-
-
-    state.thruster.vectorX =
-        0
-
-
-    state.thruster.vectorY =
-        0
 
 end
 
 
 --------------------------------------------------
--- TELEMETRY
+-- READ TELEMETRY
 --------------------------------------------------
 
 local function updateTelemetry(
@@ -147,22 +199,24 @@ local function updateTelemetry(
 
 
     --------------------------------------------------
-    -- Use first engine as telemetry source.
+    -- First engine is used as telemetry source.
+    --
+    -- The actual command is still sent to ALL engines.
     --------------------------------------------------
 
-    local thruster =
+    local engine =
         thrusters[1].device
 
 
     --------------------------------------------------
-    -- Current X
+    -- CURRENT X
     --------------------------------------------------
 
     local ok,
     value =
         pcall(
             function()
-                return thruster.getVectorX()
+                return engine.getVectorX()
             end
         )
 
@@ -176,13 +230,14 @@ local function updateTelemetry(
 
 
     --------------------------------------------------
-    -- Current Y
+    -- CURRENT Y
     --------------------------------------------------
 
-    ok, value =
+    ok,
+    value =
         pcall(
             function()
-                return thruster.getVectorY()
+                return engine.getVectorY()
             end
         )
 
@@ -196,13 +251,14 @@ local function updateTelemetry(
 
 
     --------------------------------------------------
-    -- Target X
+    -- TARGET X
     --------------------------------------------------
 
-    ok, value =
+    ok,
+    value =
         pcall(
             function()
-                return thruster.getTargetVectorX()
+                return engine.getTargetVectorX()
             end
         )
 
@@ -216,13 +272,14 @@ local function updateTelemetry(
 
 
     --------------------------------------------------
-    -- Target Y
+    -- TARGET Y
     --------------------------------------------------
 
-    ok, value =
+    ok,
+    value =
         pcall(
             function()
-                return thruster.getTargetVectorY()
+                return engine.getTargetVectorY()
             end
         )
 
@@ -236,13 +293,14 @@ local function updateTelemetry(
 
 
     --------------------------------------------------
-    -- Power
+    -- POWER
     --------------------------------------------------
 
-    ok, value =
+    ok,
+    value =
         pcall(
             function()
-                return thruster.getPower()
+                return engine.getPower()
             end
         )
 
@@ -256,13 +314,14 @@ local function updateTelemetry(
 
 
     --------------------------------------------------
-    -- Thrust
+    -- THRUST
     --------------------------------------------------
 
-    ok, value =
+    ok,
+    value =
         pcall(
             function()
-                return thruster.getThrust()
+                return engine.getThrust()
             end
         )
 
@@ -278,7 +337,7 @@ end
 
 
 --------------------------------------------------
--- APPLY GUIDANCE
+-- APPLY GUIDANCE TO ALL ENGINES
 --------------------------------------------------
 
 local function applyGuidance(
@@ -287,7 +346,7 @@ local function applyGuidance(
 )
 
     --------------------------------------------------
-    -- No engines
+    -- NO ENGINES
     --------------------------------------------------
 
     if #thrusters == 0 then
@@ -298,13 +357,12 @@ local function applyGuidance(
 
 
     --------------------------------------------------
-    -- CONTROL DISABLED
+    -- CONTROL OFF
     --------------------------------------------------
 
     if not state.system.controlEnabled then
 
-        setNeutral(
-            state,
+        setAllNeutral(
             thrusters
         )
 
@@ -314,15 +372,15 @@ local function applyGuidance(
 
 
     --------------------------------------------------
-    -- GUIDANCE UNAVAILABLE
+    -- GUIDANCE OFFLINE
     --------------------------------------------------
 
-    if type(state.guidance) ~= "table"
+    if type(state.guidance)
+        ~= "table"
         or
         not state.guidance.online then
 
-        setNeutral(
-            state,
+        setAllNeutral(
             thrusters
         )
 
@@ -337,8 +395,7 @@ local function applyGuidance(
 
     if not state.guidance.active then
 
-        setNeutral(
-            state,
+        setAllNeutral(
             thrusters
         )
 
@@ -348,7 +405,7 @@ local function applyGuidance(
 
 
     --------------------------------------------------
-    -- COMMAND X
+    -- COMMAND
     --------------------------------------------------
 
     local commandX =
@@ -357,14 +414,54 @@ local function applyGuidance(
         )
 
 
-    --------------------------------------------------
-    -- COMMAND Y
-    --------------------------------------------------
-
     local commandY =
         clamp(
             state.guidance.commandY
         )
+
+
+    --------------------------------------------------
+    -- FLIGHT LIMIT
+    --------------------------------------------------
+
+    local flightLimit =
+        tonumber(
+            state.guidance.flightMaxVector
+        )
+
+
+    if flightLimit then
+
+        flightLimit =
+            math.abs(
+                flightLimit
+            )
+
+
+        if flightLimit < MAX_VECTOR then
+
+            commandX =
+                math.max(
+                    -flightLimit,
+                    math.min(
+                        commandX,
+                        flightLimit
+                    )
+                )
+
+
+            commandY =
+                math.max(
+                    -flightLimit,
+                    math.min(
+                        commandY,
+                        flightLimit
+                    )
+                )
+
+        end
+
+    end
 
 
     --------------------------------------------------
@@ -383,20 +480,51 @@ local function applyGuidance(
     -- SEND TO EVERY ENGINE
     --------------------------------------------------
 
+    local successful =
+        0
+
+
     for _, entry in ipairs(
         thrusters
     ) do
 
-        pcall(
-            function()
+        if setVector(
+            entry.device,
+            commandX,
+            commandY
+        ) then
 
-                entry.device.setVector(
-                    commandX,
-                    commandY
-                )
+            successful =
+                successful + 1
 
-            end
-        )
+        end
+
+    end
+
+
+    state.thruster.commandedEngines =
+        successful
+
+
+    --------------------------------------------------
+    -- STATUS
+    --------------------------------------------------
+
+    if successful ==
+        #thrusters then
+
+        state.thruster.status =
+            "ONLINE"
+
+    elseif successful > 0 then
+
+        state.thruster.status =
+            "PARTIAL"
+
+    else
+
+        state.thruster.status =
+            "COMMAND ERROR"
 
     end
 
@@ -410,7 +538,7 @@ end
 local function run(state)
 
     --------------------------------------------------
-    -- STATE
+    -- INITIAL STATE
     --------------------------------------------------
 
     state.thruster =
@@ -445,6 +573,10 @@ local function run(state)
         0
 
 
+    state.thruster.commandedEngines =
+        0
+
+
     state.thruster.engines =
         {}
 
@@ -458,6 +590,16 @@ local function run(state)
 
 
     --------------------------------------------------
+    -- SAVE LIST
+    --------------------------------------------------
+
+    updateEngineList(
+        state,
+        thrusters
+    )
+
+
+    --------------------------------------------------
     -- NO ENGINES
     --------------------------------------------------
 
@@ -468,7 +610,7 @@ local function run(state)
 
 
         state.thruster.status =
-            "OFFLINE"
+            "NO ENGINES"
 
 
         while state.system
@@ -480,7 +622,6 @@ local function run(state)
 
 
         return
-
     end
 
 
@@ -496,36 +637,11 @@ local function run(state)
         "ONLINE"
 
 
-    state.thruster.engineCount =
-        #thrusters
-
-
     --------------------------------------------------
-    -- SAVE ENGINE NAMES
+    -- INITIAL NEUTRAL
     --------------------------------------------------
 
-    state.thruster.engines =
-        {}
-
-
-    for _, entry in ipairs(
-        thrusters
-    ) do
-
-        table.insert(
-            state.thruster.engines,
-            entry.name
-        )
-
-    end
-
-
-    --------------------------------------------------
-    -- START NEUTRAL
-    --------------------------------------------------
-
-    setNeutral(
-        state,
+    setAllNeutral(
         thrusters
     )
 
@@ -539,7 +655,30 @@ local function run(state)
 
 
         --------------------------------------------------
-        -- APPLY COMMAND TO ALL
+        -- CHECK FOR NEW/DISCONNECTED ENGINES
+        --------------------------------------------------
+
+        local currentThrusters =
+            findThrusters()
+
+
+        if #currentThrusters ~=
+            #thrusters then
+
+            thrusters =
+                currentThrusters
+
+
+            updateEngineList(
+                state,
+                thrusters
+            )
+
+        end
+
+
+        --------------------------------------------------
+        -- APPLY COMMAND
         --------------------------------------------------
 
         applyGuidance(
@@ -558,14 +697,6 @@ local function run(state)
         )
 
 
-        --------------------------------------------------
-        -- UPDATE ENGINE COUNT
-        --------------------------------------------------
-
-        state.thruster.engineCount =
-            #thrusters
-
-
         sleep(
             UPDATE_INTERVAL
         )
@@ -577,14 +708,13 @@ local function run(state)
     -- SAFETY SHUTDOWN
     --------------------------------------------------
 
-    state.system.controlEnabled =
-        false
-
-
-    setNeutral(
-        state,
+    setAllNeutral(
         thrusters
     )
+
+
+    state.system.controlEnabled =
+        false
 
 
     state.thruster.online =
@@ -593,6 +723,10 @@ local function run(state)
 
     state.thruster.status =
         "OFFLINE"
+
+
+    state.thruster.commandedEngines =
+        0
 
 end
 
