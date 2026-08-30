@@ -1,140 +1,175 @@
--- Vector thruster actuator
--- Dry automatic control test
--- CONTROL must be enabled before guidance commands reach the thruster.
-
-local state = require("state")
-
-local thruster =
-    peripheral.find("vector_thruster")
-    or peripheral.find("liquid_vector_thruster")
-
---------------------------------------------------
--- Limits
---------------------------------------------------
+-- Actuator System
+-- Automatic vector-thrust control
+-- Safe dry-test mode
+--
+-- IMPORTANT:
+-- This module does NOT use require().
+-- launcher.lua passes the shared state to run(state).
 
 local MAX_VECTOR = 0.25
+local UPDATE_INTERVAL = 0.05
 
 --------------------------------------------------
--- Clamp
+-- Clamp actuator command
 --------------------------------------------------
 
 local function clamp(value)
 
-    value =
-        tonumber(value) or 0
-
-    if value < -MAX_VECTOR then
-        return -MAX_VECTOR
-    end
+    value = tonumber(value) or 0
 
     if value > MAX_VECTOR then
         return MAX_VECTOR
+    end
+
+    if value < -MAX_VECTOR then
+        return -MAX_VECTOR
     end
 
     return value
 end
 
 --------------------------------------------------
--- Telemetry
+-- Set neutral position
 --------------------------------------------------
 
-local function updateTelemetry()
+local function setNeutral(state, thruster)
+
+    if thruster then
+        pcall(
+            thruster.setVector,
+            0,
+            0
+        )
+    end
+
+    state.thruster.targetVectorX = 0
+    state.thruster.targetVectorY = 0
+
+    state.thruster.vectorX = 0
+    state.thruster.vectorY = 0
+end
+
+--------------------------------------------------
+-- Read telemetry
+--------------------------------------------------
+
+local function updateTelemetry(
+    state,
+    thruster
+)
 
     if not thruster then
         return
     end
 
-    local ok, value
+    local ok
+    local value
+
+    --------------------------------------------------
+    -- Current X
+    --------------------------------------------------
 
     ok, value =
         pcall(
-            thruster.getVectorX
+            function()
+                return thruster.getVectorX()
+            end
         )
 
     if ok and value ~= nil then
         state.thruster.vectorX =
-            value
+            tonumber(value) or 0
     end
+
+    --------------------------------------------------
+    -- Current Y
+    --------------------------------------------------
 
     ok, value =
         pcall(
-            thruster.getVectorY
+            function()
+                return thruster.getVectorY()
+            end
         )
 
     if ok and value ~= nil then
         state.thruster.vectorY =
-            value
+            tonumber(value) or 0
     end
+
+    --------------------------------------------------
+    -- Target X
+    --------------------------------------------------
 
     ok, value =
         pcall(
-            thruster.getTargetVectorX
+            function()
+                return thruster.getTargetVectorX()
+            end
         )
 
     if ok and value ~= nil then
         state.thruster.targetVectorX =
-            value
+            tonumber(value) or 0
     end
+
+    --------------------------------------------------
+    -- Target Y
+    --------------------------------------------------
 
     ok, value =
         pcall(
-            thruster.getTargetVectorY
+            function()
+                return thruster.getTargetVectorY()
+            end
         )
 
     if ok and value ~= nil then
         state.thruster.targetVectorY =
-            value
+            tonumber(value) or 0
     end
+
+    --------------------------------------------------
+    -- Power
+    --------------------------------------------------
 
     ok, value =
         pcall(
-            thruster.getPower
+            function()
+                return thruster.getPower()
+            end
         )
 
     if ok and value ~= nil then
         state.thruster.power =
-            value
+            tonumber(value) or 0
     end
+
+    --------------------------------------------------
+    -- Thrust
+    --------------------------------------------------
 
     ok, value =
         pcall(
-            thruster.getThrust
+            function()
+                return thruster.getThrust()
+            end
         )
 
     if ok and value ~= nil then
         state.thruster.thrust =
-            value
+            tonumber(value) or 0
     end
-end
-
---------------------------------------------------
--- Set neutral position
---------------------------------------------------
-
-local function setNeutral()
-
-    if not thruster then
-        return
-    end
-
-    pcall(
-        thruster.setVector,
-        0,
-        0
-    )
-
-    state.thruster.targetVectorX =
-        0
-
-    state.thruster.targetVectorY =
-        0
 end
 
 --------------------------------------------------
 -- Apply guidance command
 --------------------------------------------------
 
-local function updateCommand()
+local function applyGuidance(
+    state,
+    thruster
+)
 
     if not thruster then
         return
@@ -142,23 +177,31 @@ local function updateCommand()
 
     --------------------------------------------------
     -- CONTROL DISABLED
+    --
+    -- Always return the nozzle to neutral.
     --------------------------------------------------
 
     if not state.system.controlEnabled then
 
-        setNeutral()
+        setNeutral(
+            state,
+            thruster
+        )
 
         return
     end
 
     --------------------------------------------------
-    -- GUIDANCE OFFLINE
+    -- GUIDANCE UNAVAILABLE
     --------------------------------------------------
 
-    if not state.guidance
+    if type(state.guidance) ~= "table"
         or not state.guidance.online then
 
-        setNeutral()
+        setNeutral(
+            state,
+            thruster
+        )
 
         return
     end
@@ -169,7 +212,10 @@ local function updateCommand()
 
     if not state.guidance.active then
 
-        setNeutral()
+        setNeutral(
+            state,
+            thruster
+        )
 
         return
     end
@@ -178,35 +224,90 @@ local function updateCommand()
     -- Read guidance commands
     --------------------------------------------------
 
-    local x =
+    local commandX =
         clamp(
             state.guidance.commandX
         )
 
-    local y =
+    local commandY =
         clamp(
             state.guidance.commandY
         )
 
     --------------------------------------------------
-    -- Send vector command
+    -- Publish requested vector
+    --------------------------------------------------
+
+    state.thruster.targetVectorX =
+        commandX
+
+    state.thruster.targetVectorY =
+        commandY
+
+    --------------------------------------------------
+    -- Send vector to thruster
     --------------------------------------------------
 
     pcall(
-        thruster.setVector,
-        x,
-        y
+        function()
+            thruster.setVector(
+                commandX,
+                commandY
+            )
+        end
     )
 end
 
 --------------------------------------------------
--- MAIN
+-- MAIN MODULE
 --------------------------------------------------
 
-local function run()
+local function run(state)
 
     --------------------------------------------------
-    -- Thruster unavailable
+    -- Ensure state tables exist
+    --------------------------------------------------
+
+    state.thruster =
+        state.thruster or {}
+
+    state.thruster.online =
+        false
+
+    state.thruster.status =
+        "STARTING"
+
+    state.thruster.vectorX =
+        0
+
+    state.thruster.vectorY =
+        0
+
+    state.thruster.targetVectorX =
+        0
+
+    state.thruster.targetVectorY =
+        0
+
+    --------------------------------------------------
+    -- Find vector thruster
+    --------------------------------------------------
+
+    local thruster =
+        peripheral.find(
+            "vector_thruster"
+        )
+
+    if not thruster then
+
+        thruster =
+            peripheral.find(
+                "liquid_vector_thruster"
+            )
+    end
+
+    --------------------------------------------------
+    -- Peripheral missing
     --------------------------------------------------
 
     if not thruster then
@@ -217,7 +318,9 @@ local function run()
         state.thruster.status =
             "OFFLINE"
 
-        while state.system.running do
+        while state.system
+            and state.system.running do
+
             sleep(1)
         end
 
@@ -235,41 +338,56 @@ local function run()
         "ONLINE"
 
     --------------------------------------------------
-    -- Safety: start neutral
+    -- SAFETY:
+    -- Start with neutral nozzle.
     --------------------------------------------------
 
-    setNeutral()
+    setNeutral(
+        state,
+        thruster
+    )
 
     --------------------------------------------------
-    -- Main actuator loop
+    -- MAIN LOOP
     --------------------------------------------------
 
-    while state.system.running do
+    while state.system
+        and state.system.running do
 
-        updateCommand()
+        --------------------------------------------------
+        -- Apply automatic guidance command
+        --------------------------------------------------
 
-        updateTelemetry()
+        applyGuidance(
+            state,
+            thruster
+        )
 
-        sleep(0.05)
+        --------------------------------------------------
+        -- Update telemetry
+        --------------------------------------------------
+
+        updateTelemetry(
+            state,
+            thruster
+        )
+
+        sleep(
+            UPDATE_INTERVAL
+        )
     end
 
     --------------------------------------------------
-    -- Safety shutdown
+    -- SAFETY SHUTDOWN
     --------------------------------------------------
 
-    setNeutral()
+    state.system.controlEnabled =
+        false
 
-    state.thruster.vectorX =
-        0
-
-    state.thruster.vectorY =
-        0
-
-    state.thruster.targetVectorX =
-        0
-
-    state.thruster.targetVectorY =
-        0
+    setNeutral(
+        state,
+        thruster
+    )
 
     state.thruster.online =
         false
@@ -277,6 +395,10 @@ local function run()
     state.thruster.status =
         "OFFLINE"
 end
+
+--------------------------------------------------
+-- MODULE EXPORT
+--------------------------------------------------
 
 return {
     run = run
