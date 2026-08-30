@@ -1,85 +1,179 @@
 -- Actuator System
--- Automatic vector-thrust control
--- Safe dry-test mode
+-- Multi-engine vector-thrust control
+-- CC:Tweaked
 --
--- IMPORTANT:
--- This module does NOT use require().
--- launcher.lua passes the shared state to run(state).
+-- Controls ALL connected Liquid Vector Thrusters.
+--
+-- No require() is used.
+-- launcher.lua passes shared state to run(state).
+
+--------------------------------------------------
+-- SETTINGS
+--------------------------------------------------
 
 local MAX_VECTOR = 0.25
 local UPDATE_INTERVAL = 0.05
 
+
 --------------------------------------------------
--- Clamp actuator command
+-- CLAMP
 --------------------------------------------------
 
 local function clamp(value)
 
-    value = tonumber(value) or 0
+    value =
+        tonumber(value) or 0
+
 
     if value > MAX_VECTOR then
         return MAX_VECTOR
     end
 
+
     if value < -MAX_VECTOR then
         return -MAX_VECTOR
     end
 
+
     return value
 end
 
+
 --------------------------------------------------
--- Set neutral position
+-- FIND ALL THRUSTERS
 --------------------------------------------------
 
-local function setNeutral(state, thruster)
+local function findThrusters()
 
-    if thruster then
-        pcall(
-            thruster.setVector,
-            0,
-            0
-        )
+    local result = {}
+
+
+    for _, name in ipairs(
+        peripheral.getNames()
+    ) do
+
+        local ptype =
+            peripheral.getType(name)
+
+
+        if ptype ==
+            "vector_thruster"
+            or
+            ptype ==
+            "liquid_vector_thruster" then
+
+            local device =
+                peripheral.wrap(name)
+
+
+            if device then
+
+                table.insert(
+                    result,
+                    {
+                        name = name,
+                        device = device
+                    }
+                )
+
+            end
+
+        end
+
     end
 
-    state.thruster.targetVectorX = 0
-    state.thruster.targetVectorY = 0
 
-    state.thruster.vectorX = 0
-    state.thruster.vectorY = 0
+    return result
 end
 
+
 --------------------------------------------------
--- Read telemetry
+-- NEUTRAL
+--------------------------------------------------
+
+local function setNeutral(
+    state,
+    thrusters
+)
+
+    for _, entry in ipairs(
+        thrusters
+    ) do
+
+        pcall(
+            function()
+
+                entry.device.setVector(
+                    0,
+                    0
+                )
+
+            end
+        )
+
+    end
+
+
+    state.thruster.targetVectorX =
+        0
+
+
+    state.thruster.targetVectorY =
+        0
+
+
+    state.thruster.vectorX =
+        0
+
+
+    state.thruster.vectorY =
+        0
+
+end
+
+
+--------------------------------------------------
+-- TELEMETRY
 --------------------------------------------------
 
 local function updateTelemetry(
     state,
-    thruster
+    thrusters
 )
 
-    if not thruster then
+    if #thrusters == 0 then
         return
     end
 
-    local ok
-    local value
+
+    --------------------------------------------------
+    -- Use first engine as telemetry source.
+    --------------------------------------------------
+
+    local thruster =
+        thrusters[1].device
+
 
     --------------------------------------------------
     -- Current X
     --------------------------------------------------
 
-    ok, value =
+    local ok,
+    value =
         pcall(
             function()
                 return thruster.getVectorX()
             end
         )
 
+
     if ok and value ~= nil then
+
         state.thruster.vectorX =
             tonumber(value) or 0
+
     end
+
 
     --------------------------------------------------
     -- Current Y
@@ -92,10 +186,14 @@ local function updateTelemetry(
             end
         )
 
+
     if ok and value ~= nil then
+
         state.thruster.vectorY =
             tonumber(value) or 0
+
     end
+
 
     --------------------------------------------------
     -- Target X
@@ -108,10 +206,14 @@ local function updateTelemetry(
             end
         )
 
+
     if ok and value ~= nil then
+
         state.thruster.targetVectorX =
             tonumber(value) or 0
+
     end
+
 
     --------------------------------------------------
     -- Target Y
@@ -124,10 +226,14 @@ local function updateTelemetry(
             end
         )
 
+
     if ok and value ~= nil then
+
         state.thruster.targetVectorY =
             tonumber(value) or 0
+
     end
+
 
     --------------------------------------------------
     -- Power
@@ -140,10 +246,14 @@ local function updateTelemetry(
             end
         )
 
+
     if ok and value ~= nil then
+
         state.thruster.power =
             tonumber(value) or 0
+
     end
+
 
     --------------------------------------------------
     -- Thrust
@@ -156,55 +266,70 @@ local function updateTelemetry(
             end
         )
 
+
     if ok and value ~= nil then
+
         state.thruster.thrust =
             tonumber(value) or 0
+
     end
+
 end
 
+
 --------------------------------------------------
--- Apply guidance command
+-- APPLY GUIDANCE
 --------------------------------------------------
 
 local function applyGuidance(
     state,
-    thruster
+    thrusters
 )
 
-    if not thruster then
+    --------------------------------------------------
+    -- No engines
+    --------------------------------------------------
+
+    if #thrusters == 0 then
+
         return
+
     end
+
 
     --------------------------------------------------
     -- CONTROL DISABLED
-    --
-    -- Always return the nozzle to neutral.
     --------------------------------------------------
 
     if not state.system.controlEnabled then
 
         setNeutral(
             state,
-            thruster
+            thrusters
         )
 
         return
+
     end
+
 
     --------------------------------------------------
     -- GUIDANCE UNAVAILABLE
     --------------------------------------------------
 
     if type(state.guidance) ~= "table"
-        or not state.guidance.online then
+        or
+        not state.guidance.online then
 
         setNeutral(
             state,
-            thruster
+            thrusters
         )
 
         return
+
     end
+
 
     --------------------------------------------------
     -- GUIDANCE NOT ACTIVE
@@ -214,14 +339,16 @@ local function applyGuidance(
 
         setNeutral(
             state,
-            thruster
+            thrusters
         )
 
         return
+
     end
 
+
     --------------------------------------------------
-    -- Read guidance commands
+    -- COMMAND X
     --------------------------------------------------
 
     local commandX =
@@ -229,123 +356,179 @@ local function applyGuidance(
             state.guidance.commandX
         )
 
+
+    --------------------------------------------------
+    -- COMMAND Y
+    --------------------------------------------------
+
     local commandY =
         clamp(
             state.guidance.commandY
         )
 
+
     --------------------------------------------------
-    -- Publish requested vector
+    -- PUBLISH
     --------------------------------------------------
 
     state.thruster.targetVectorX =
         commandX
 
+
     state.thruster.targetVectorY =
         commandY
 
+
     --------------------------------------------------
-    -- Send vector to thruster
+    -- SEND TO EVERY ENGINE
     --------------------------------------------------
 
-    pcall(
-        function()
-            thruster.setVector(
-                commandX,
-                commandY
-            )
-        end
-    )
+    for _, entry in ipairs(
+        thrusters
+    ) do
+
+        pcall(
+            function()
+
+                entry.device.setVector(
+                    commandX,
+                    commandY
+                )
+
+            end
+        )
+
+    end
+
 end
 
+
 --------------------------------------------------
--- MAIN MODULE
+-- MAIN
 --------------------------------------------------
 
 local function run(state)
 
     --------------------------------------------------
-    -- Ensure state tables exist
+    -- STATE
     --------------------------------------------------
 
     state.thruster =
         state.thruster or {}
 
+
     state.thruster.online =
         false
+
 
     state.thruster.status =
         "STARTING"
 
+
     state.thruster.vectorX =
         0
+
 
     state.thruster.vectorY =
         0
 
+
     state.thruster.targetVectorX =
         0
+
 
     state.thruster.targetVectorY =
         0
 
-    --------------------------------------------------
-    -- Find vector thruster
-    --------------------------------------------------
 
-    local thruster =
-        peripheral.find(
-            "vector_thruster"
-        )
+    state.thruster.engineCount =
+        0
 
-    if not thruster then
 
-        thruster =
-            peripheral.find(
-                "liquid_vector_thruster"
-            )
-    end
+    state.thruster.engines =
+        {}
+
 
     --------------------------------------------------
-    -- Peripheral missing
+    -- FIND ENGINES
     --------------------------------------------------
 
-    if not thruster then
+    local thrusters =
+        findThrusters()
+
+
+    --------------------------------------------------
+    -- NO ENGINES
+    --------------------------------------------------
+
+    if #thrusters == 0 then
 
         state.thruster.online =
             false
 
+
         state.thruster.status =
             "OFFLINE"
+
 
         while state.system
             and state.system.running do
 
             sleep(1)
+
         end
 
+
         return
+
     end
 
+
     --------------------------------------------------
-    -- Thruster online
+    -- ONLINE
     --------------------------------------------------
 
     state.thruster.online =
         true
 
+
     state.thruster.status =
         "ONLINE"
 
+
+    state.thruster.engineCount =
+        #thrusters
+
+
     --------------------------------------------------
-    -- SAFETY:
-    -- Start with neutral nozzle.
+    -- SAVE ENGINE NAMES
+    --------------------------------------------------
+
+    state.thruster.engines =
+        {}
+
+
+    for _, entry in ipairs(
+        thrusters
+    ) do
+
+        table.insert(
+            state.thruster.engines,
+            entry.name
+        )
+
+    end
+
+
+    --------------------------------------------------
+    -- START NEUTRAL
     --------------------------------------------------
 
     setNeutral(
         state,
-        thruster
+        thrusters
     )
+
 
     --------------------------------------------------
     -- MAIN LOOP
@@ -354,28 +537,41 @@ local function run(state)
     while state.system
         and state.system.running do
 
+
         --------------------------------------------------
-        -- Apply automatic guidance command
+        -- APPLY COMMAND TO ALL
         --------------------------------------------------
 
         applyGuidance(
             state,
-            thruster
+            thrusters
         )
 
+
         --------------------------------------------------
-        -- Update telemetry
+        -- TELEMETRY
         --------------------------------------------------
 
         updateTelemetry(
             state,
-            thruster
+            thrusters
         )
+
+
+        --------------------------------------------------
+        -- UPDATE ENGINE COUNT
+        --------------------------------------------------
+
+        state.thruster.engineCount =
+            #thrusters
+
 
         sleep(
             UPDATE_INTERVAL
         )
+
     end
+
 
     --------------------------------------------------
     -- SAFETY SHUTDOWN
@@ -384,17 +580,22 @@ local function run(state)
     state.system.controlEnabled =
         false
 
+
     setNeutral(
         state,
-        thruster
+        thrusters
     )
+
 
     state.thruster.online =
         false
 
+
     state.thruster.status =
         "OFFLINE"
+
 end
+
 
 --------------------------------------------------
 -- MODULE EXPORT
