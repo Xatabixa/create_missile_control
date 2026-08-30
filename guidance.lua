@@ -1,20 +1,16 @@
 -- Guidance System
--- Single-folder ComputerCraft compatible version
--- State is supplied by launcher.lua
+-- Uses live navigation data from the shared state.
+-- Designed for dry testing before automatic actuator control.
 
 local MAX_VECTOR = 0.25
 
-local BEARING_GAIN = 1.0
-local ELEVATION_GAIN = 0.05
+local YAW_GAIN = 1.0
+local PITCH_GAIN = 0.05
 
-local DEADZONE =
-    math.rad(0.5)
+local YAW_DEADZONE = math.rad(0.5)
+local PITCH_DEADZONE = math.rad(0.5)
 
-local function clamp(
-    value,
-    minimum,
-    maximum
-)
+local function clamp(value, minimum, maximum)
 
     if value < minimum then
         return minimum
@@ -27,15 +23,27 @@ local function clamp(
     return value
 end
 
+local function normalizeAngle(angle)
+
+    while angle > math.pi do
+        angle = angle - math.pi * 2
+    end
+
+    while angle < -math.pi do
+        angle = angle + math.pi * 2
+    end
+
+    return angle
+end
+
 local function run(state)
 
     --------------------------------------------------
     -- Ensure guidance state exists
     --------------------------------------------------
 
-    if type(state.guidance) ~= "table" then
-
-        state.guidance = {
+    state.guidance =
+        state.guidance or {
             online = false,
             status = "OFFLINE",
 
@@ -48,28 +56,25 @@ local function run(state)
             pitchError = 0
         }
 
-    end
-
     --------------------------------------------------
-    -- Update guidance calculation
+    -- Main update
     --------------------------------------------------
 
     local function update()
 
-        --------------------------------------------------
-        -- Navigation unavailable
-        --------------------------------------------------
+        local navigation =
+            state.navigation
 
-        if type(state.navigation) ~= "table" then
+        if type(navigation) ~= "table" then
 
             state.guidance.online =
                 false
 
-            state.guidance.active =
-                false
-
             state.guidance.status =
                 "OFFLINE"
+
+            state.guidance.active =
+                false
 
             state.guidance.commandX =
                 0
@@ -80,16 +85,16 @@ local function run(state)
             return
         end
 
-        if not state.navigation.online then
+        if not navigation.online then
 
             state.guidance.online =
                 false
 
-            state.guidance.active =
-                false
-
             state.guidance.status =
                 "OFFLINE"
+
+            state.guidance.active =
+                false
 
             state.guidance.commandX =
                 0
@@ -111,59 +116,132 @@ local function run(state)
             "ONLINE"
 
         --------------------------------------------------
-        -- Read navigation errors
+        -- YAW
+        --
+        -- IMPORTANT:
+        -- Use relativeAngle instead of bearing.
+        --
+        -- relativeAngle is updated by navigation.lua
+        -- from navigation_table:getRelativeAngleRad().
+        --
+        -- This value should change when the missile
+        -- rotates relative to the target.
         --------------------------------------------------
 
-        local bearing =
+        local yawError =
             tonumber(
-                state.navigation.bearing
+                navigation.relativeAngle
             ) or 0
 
-        local elevation =
-            tonumber(
-                state.navigation.elevation
-            ) or 0
-
-        --------------------------------------------------
-        -- Store errors
-        --------------------------------------------------
+        yawError =
+            normalizeAngle(
+                yawError
+            )
 
         state.guidance.yawError =
-            bearing
+            yawError
+
+        --------------------------------------------------
+        -- PITCH
+        --
+        -- navigation.elevation is a vertical offset,
+        -- not an angle.
+        --
+        -- Convert vertical offset and distance into
+        -- a desired elevation angle.
+        --------------------------------------------------
+
+        local verticalOffset =
+            tonumber(
+                navigation.elevation
+            ) or 0
+
+        local distance =
+            tonumber(
+                navigation.distance
+            ) or 0
+
+        local desiredPitch =
+            0
+
+        if distance > 0.001 then
+
+            local horizontalDistance =
+                math.sqrt(
+                    math.max(
+                        distance * distance -
+                        verticalOffset * verticalOffset,
+                        0
+                    )
+                )
+
+            desiredPitch =
+                math.atan(
+                    verticalOffset,
+                    math.max(
+                        horizontalDistance,
+                        0.001
+                    )
+                )
+        end
+
+        --------------------------------------------------
+        -- Current missile pitch
+        --------------------------------------------------
+
+        local currentPitch =
+            tonumber(
+                navigation.pitch
+            ) or 0
+
+        --------------------------------------------------
+        -- Pitch error
+        --------------------------------------------------
+
+        local pitchError =
+            desiredPitch -
+            currentPitch
+
+        pitchError =
+            normalizeAngle(
+                pitchError
+            )
 
         state.guidance.pitchError =
-            elevation
+            pitchError
 
         --------------------------------------------------
-        -- Calculate yaw command
+        -- YAW COMMAND
         --------------------------------------------------
 
-        local commandY = 0
+        local commandY =
+            0
 
-        if math.abs(bearing) >
-            DEADZONE then
+        if math.abs(yawError) >
+            YAW_DEADZONE then
 
             commandY =
-                bearing *
-                BEARING_GAIN
+                yawError *
+                YAW_GAIN
         end
 
         --------------------------------------------------
-        -- Calculate pitch command
+        -- PITCH COMMAND
         --------------------------------------------------
 
-        local commandX = 0
+        local commandX =
+            0
 
-        if math.abs(elevation) >
-            DEADZONE then
+        if math.abs(pitchError) >
+            PITCH_DEADZONE then
 
             commandX =
-                elevation *
-                ELEVATION_GAIN
+                pitchError *
+                PITCH_GAIN
         end
 
         --------------------------------------------------
-        -- Limit commands
+        -- Limit actuator commands
         --------------------------------------------------
 
         commandX =
@@ -181,7 +259,7 @@ local function run(state)
             )
 
         --------------------------------------------------
-        -- Store commands
+        -- Publish commands
         --------------------------------------------------
 
         state.guidance.commandX =
@@ -191,44 +269,50 @@ local function run(state)
             commandY
 
         --------------------------------------------------
-        -- Determine guidance activation
+        -- Guidance activation
         --
-        -- Target coordinates entered through
-        -- the display are stored in state.target.
+        -- Our display target is accepted, but the
+        -- navigation table target is also accepted.
         --------------------------------------------------
 
-        if type(state.target) == "table"
-            and state.target.set == true then
+        local localTarget =
+            type(state.target) == "table"
+            and state.target.set == true
 
-            state.guidance.active =
-                true
+        local navigationTarget =
+            navigation.hasNavTarget == true
 
-        else
-
-            state.guidance.active =
-                false
-
-        end
+        state.guidance.active =
+            localTarget or navigationTarget
     end
 
     --------------------------------------------------
-    -- Main guidance loop
+    -- Continuous guidance loop
     --------------------------------------------------
 
-    while state.system.running do
+    while state.system
+        and state.system.running do
 
         update()
 
         sleep(0.05)
-
     end
 
     --------------------------------------------------
     -- Safe shutdown
     --------------------------------------------------
 
-    state.guidance.commandX = 0
-    state.guidance.commandY = 0
+    state.guidance.commandX =
+        0
+
+    state.guidance.commandY =
+        0
+
+    state.guidance.yawError =
+        0
+
+    state.guidance.pitchError =
+        0
 
     state.guidance.active =
         false
