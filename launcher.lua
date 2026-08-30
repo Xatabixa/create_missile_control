@@ -1,5 +1,5 @@
 -- Missile Control System Launcher
--- Fixed absolute-path version for the /rocket directory.
+-- All modules share the same state and require function.
 
 --------------------------------------------------
 -- CONFIGURATION
@@ -8,29 +8,23 @@
 local BASE = "/rocket"
 
 --------------------------------------------------
--- FORCE WORKING DIRECTORY
+-- LOAD STATE
 --------------------------------------------------
 
-shell.setDir(BASE)
+local stateChunk, stateError =
+    loadfile(BASE .. "/state.lua")
 
---------------------------------------------------
--- CONFIGURE REQUIRE PATH
---------------------------------------------------
+if not stateChunk then
 
-package.path =
-    BASE .. "/?.lua;" ..
-    BASE .. "/?/init.lua"
+    error(
+        "STATE LOAD ERROR:\n" ..
+        tostring(stateError)
+    )
 
---------------------------------------------------
--- LOAD SHARED STATE
---------------------------------------------------
+end
 
 local state =
-    dofile(BASE .. "/state.lua")
-
-state.system.running = true
-state.system.mode = "DRY TEST"
-state.system.status = "STARTING"
+    stateChunk()
 
 --------------------------------------------------
 -- MODULE LOADER
@@ -41,7 +35,6 @@ local function loadModule(filename)
     local path =
         BASE .. "/" .. filename
 
-    -- Explicit filesystem check
     if not fs.exists(path) then
 
         error(
@@ -51,7 +44,6 @@ local function loadModule(filename)
 
     end
 
-    -- Read the file directly
     local handle =
         fs.open(path, "r")
 
@@ -69,13 +61,46 @@ local function loadModule(filename)
 
     handle.close()
 
-    -- Compile source
+    --------------------------------------------------
+    -- MODULE ENVIRONMENT
+    --------------------------------------------------
+
+    local env = {}
+
+    setmetatable(
+        env,
+        {
+            __index = _G
+        }
+    )
+
+    --------------------------------------------------
+    -- SHARED REQUIRE
+    --------------------------------------------------
+
+    env.require = function(name)
+
+        if name == "state" then
+            return state
+        end
+
+        error(
+            "Unknown module requested: " ..
+            tostring(name)
+        )
+
+    end
+
+    --------------------------------------------------
+    -- COMPILE
+    --------------------------------------------------
+
     local chunk, err =
         load(
             source,
             "@" .. path,
             "t",
-            _ENV
+            env
         )
 
     if not chunk then
@@ -92,6 +117,14 @@ local function loadModule(filename)
     return chunk
 
 end
+
+--------------------------------------------------
+-- INITIAL STATE
+--------------------------------------------------
+
+state.system.running = true
+state.system.mode = "DRY TEST"
+state.system.status = "STARTING"
 
 --------------------------------------------------
 -- LOAD MODULES
