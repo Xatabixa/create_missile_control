@@ -1,15 +1,168 @@
 -- Universal CC:Tweaked Diagnostic Viewer
--- Runs another Lua program and captures its terminal output.
--- Main missile control scripts are not modified.
+-- Does not modify any existing program.
 
 --------------------------------------------------
--- CONFIGURATION
+-- FIND FILE
 --------------------------------------------------
 
-local DEFAULT_PROGRAM = "diagnostic.lua"
+local function findFile(filename)
+
+    -- Current directory
+    if fs.exists(filename) then
+        return filename
+    end
+
+    -- Root directory
+    local rootPath =
+        "/" .. filename
+
+    if fs.exists(rootPath) then
+        return rootPath
+    end
+
+    -- Search one level deep
+    local rootEntries =
+        fs.list("/")
+
+    for _, entry in ipairs(rootEntries) do
+
+        local path =
+            "/" .. entry
+
+        if fs.isDir(path) then
+
+            local candidate =
+                path .. "/" .. filename
+
+            if fs.exists(candidate) then
+                return candidate
+            end
+
+        end
+
+    end
+
+    return nil
+
+end
 
 --------------------------------------------------
--- TERMINAL BUFFER
+-- SELECT PROGRAM
+--------------------------------------------------
+
+term.clear()
+term.setCursorPos(1, 1)
+
+print("UNIVERSAL DIAGNOSTIC VIEWER")
+print("===========================")
+print("")
+
+print("Current directory:")
+print(fs.getDir(shell.getRunningProgram()))
+print("")
+
+print("Enter program name or path.")
+print("Example: launcher.lua")
+print("Example: /missile/launcher.lua")
+print("")
+
+write("> ")
+
+local input =
+    read()
+
+if input == "" then
+
+    input = "launcher.lua"
+
+end
+
+--------------------------------------------------
+-- RESOLVE PATH
+--------------------------------------------------
+
+local program =
+    findFile(input)
+
+if not program then
+
+    term.clear()
+    term.setCursorPos(1, 1)
+
+    print("FILE NOT FOUND")
+    print("================")
+    print("")
+    print("Requested:")
+    print(input)
+
+    print("")
+    print("Files in current directory:")
+
+    local currentDir =
+        fs.getDir(
+            shell.getRunningProgram()
+        )
+
+    if currentDir == "" then
+        currentDir = "/"
+    end
+
+    local entries =
+        fs.list(currentDir)
+
+    for _, entry in ipairs(entries) do
+
+        print("  " .. entry)
+
+    end
+
+    print("")
+    print("Press any key...")
+
+    os.pullEvent("key")
+
+    return
+
+end
+
+--------------------------------------------------
+-- LOAD
+--------------------------------------------------
+
+term.clear()
+term.setCursorPos(1, 1)
+
+print("FOUND")
+print("================")
+print("")
+print(program)
+print("")
+
+local chunk, err =
+    loadfile(program)
+
+if not chunk then
+
+    print("LOAD FAILED")
+    print("")
+    print(tostring(err))
+
+    print("")
+    print("Press any key...")
+
+    os.pullEvent("key")
+
+    return
+
+end
+
+print("LOAD OK")
+print("")
+print("Running diagnostic...")
+print("")
+
+--------------------------------------------------
+-- CAPTURE OUTPUT
 --------------------------------------------------
 
 local buffer = {}
@@ -17,12 +170,14 @@ local buffer = {}
 local cursorX = 1
 local cursorY = 1
 
-local width, height =
-    term.getSize()
+local captureTerm = {}
 
---------------------------------------------------
--- BUFFER HELPERS
---------------------------------------------------
+setmetatable(
+    captureTerm,
+    {
+        __index = term
+    }
+)
 
 local function ensureLine(y)
 
@@ -32,7 +187,7 @@ local function ensureLine(y)
 
 end
 
-local function writeToBuffer(text)
+function captureTerm.write(text)
 
     text = tostring(text)
 
@@ -42,7 +197,11 @@ local function writeToBuffer(text)
         buffer[cursorY]
 
     local before =
-        string.sub(line, 1, cursorX - 1)
+        string.sub(
+            line,
+            1,
+            cursorX - 1
+        )
 
     local after =
         string.sub(
@@ -58,42 +217,18 @@ local function writeToBuffer(text)
 
 end
 
-local function newLine()
-
-    cursorX = 1
-    cursorY = cursorY + 1
-
-    ensureLine(cursorY)
-
-end
-
---------------------------------------------------
--- CAPTURE TERMINAL
---------------------------------------------------
-
-local captureTerm = {}
-
-setmetatable(
-    captureTerm,
-    {
-        __index = term
-    }
-)
-
-function captureTerm.write(text)
-
-    writeToBuffer(text)
-
-end
-
 function captureTerm.print(text)
 
     if text == nil then
         text = ""
     end
 
-    writeToBuffer(text)
-    newLine()
+    captureTerm.write(text)
+
+    cursorX = 1
+    cursorY = cursorY + 1
+
+    ensureLine(cursorY)
 
 end
 
@@ -122,79 +257,7 @@ function captureTerm.clear()
 end
 
 --------------------------------------------------
--- RUN PROGRAM
---------------------------------------------------
-
-term.clear()
-term.setCursorPos(1, 1)
-
-print("UNIVERSAL DIAGNOSTIC VIEWER")
-print("===========================")
-print("")
-
-write("Program [" .. DEFAULT_PROGRAM .. "]: ")
-
-local input =
-    read()
-
-local program
-
-if input == "" then
-    program = DEFAULT_PROGRAM
-else
-    program = input
-end
-
---------------------------------------------------
--- CHECK FILE
---------------------------------------------------
-
-if not fs.exists(program) then
-
-    term.clear()
-    term.setCursorPos(1, 1)
-
-    print("ERROR")
-    print("")
-    print("File not found:")
-    print(program)
-
-    print("")
-    print("Press any key...")
-
-    os.pullEvent("key")
-
-    return
-
-end
-
---------------------------------------------------
--- LOAD PROGRAM
---------------------------------------------------
-
-local chunk, err =
-    loadfile(program)
-
-if not chunk then
-
-    term.clear()
-    term.setCursorPos(1, 1)
-
-    print("LOAD ERROR")
-    print("")
-    print(tostring(err))
-
-    print("")
-    print("Press any key...")
-
-    os.pullEvent("key")
-
-    return
-
-end
-
---------------------------------------------------
--- EXECUTE WITH CAPTURED TERMINAL
+-- RUN
 --------------------------------------------------
 
 local oldTerm =
@@ -210,7 +273,7 @@ _ENV.term =
     oldTerm
 
 --------------------------------------------------
--- ADD RESULT
+-- ERROR
 --------------------------------------------------
 
 if not ok then
@@ -226,25 +289,25 @@ end
 if #buffer == 0 then
 
     buffer[1] =
-        "Program produced no output."
+        "Program produced no terminal output."
 
 end
 
 --------------------------------------------------
--- SCROLL VIEWER
+-- VIEWER
 --------------------------------------------------
 
 local scroll = 0
 
-local function draw()
+while true do
 
     term.clear()
 
-    local w, h =
+    local width, height =
         term.getSize()
 
     local visible =
-        h - 2
+        height - 2
 
     local maxScroll =
         math.max(
@@ -259,7 +322,7 @@ local function draw()
     term.setCursorPos(1, 1)
 
     write(
-        "DIAGNOSTIC  " ..
+        "DIAGNOSTIC " ..
         (scroll + 1) ..
         "-" ..
         math.min(
@@ -282,13 +345,13 @@ local function draw()
             local text =
                 buffer[index]
 
-            if #text > w then
+            if #text > width then
 
                 text =
                     string.sub(
                         text,
                         1,
-                        w
+                        width
                     )
 
             end
@@ -299,30 +362,8 @@ local function draw()
 
     end
 
-end
-
---------------------------------------------------
--- INPUT
---------------------------------------------------
-
-while true do
-
-    draw()
-
     local _, key =
         os.pullEvent("key")
-
-    local _, h =
-        term.getSize()
-
-    local visible =
-        h - 2
-
-    local maxScroll =
-        math.max(
-            0,
-            #buffer - visible
-        )
 
     if key == keys.up then
 
