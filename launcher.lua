@@ -1,160 +1,102 @@
 -- Missile Control System Launcher
--- Uses the directory of launcher.lua as the module directory.
+
+local BASE = "/rocket/"
 
 --------------------------------------------------
--- FIND LAUNCHER DIRECTORY
+-- LOAD STATE
 --------------------------------------------------
 
-local programPath =
-    shell.getRunningProgram()
-
-local baseDir =
-    fs.getDir(programPath)
-
-if baseDir == "" then
-    baseDir = "/"
-end
-
-if string.sub(baseDir, 1, 1) ~= "/" then
-    baseDir = "/" .. baseDir
-end
-
---------------------------------------------------
--- USE ROCKET DIRECTORY
---------------------------------------------------
-
-shell.setDir(baseDir)
-
---------------------------------------------------
--- LOAD SHARED STATE
---------------------------------------------------
-
-local state =
-    require("state")
+local state = dofile(BASE .. "state.lua")
 
 state.system.running = true
 state.system.mode = "DRY TEST"
 state.system.status = "STARTING"
 
 --------------------------------------------------
--- MODULE LOADER
---------------------------------------------------
-
-local function loadModule(filename)
-
-    local path =
-        fs.combine(baseDir, filename)
-
-    if not fs.exists(path) then
-
-        error(
-            "MODULE NOT FOUND: " ..
-            path
-        )
-
-    end
-
-    local chunk, errorMessage =
-        loadfile(path)
-
-    if not chunk then
-
-        error(
-            "LOAD ERROR [" ..
-            path ..
-            "]: " ..
-            tostring(errorMessage)
-        )
-
-    end
-
-    return chunk
-end
-
---------------------------------------------------
 -- LOAD MODULES
 --------------------------------------------------
 
-local navigation =
-    loadModule("navigation.lua")
+local function load(name)
 
-local guidance =
-    loadModule("guidance.lua")
+    local path = BASE .. name
 
-local actuator =
-    loadModule("actuator.lua")
-
-local display =
-    loadModule("display.lua")
-
---------------------------------------------------
--- RUN MODULE
---------------------------------------------------
-
-local function runModule(name, module)
-
-    local ok, errorMessage =
-        pcall(module)
-
-    if not ok then
-
-        state.system.status = "ERROR"
-
-        print("")
-        print("==============================")
-        print("MODULE ERROR")
-        print(name)
-        print("==============================")
-        print("")
-        print(tostring(errorMessage))
-        print("")
-
-        state.system.running = false
-
+    if not fs.exists(path) then
+        error("FILE NOT FOUND: " .. path)
     end
+
+    local program, err =
+        loadfile(path)
+
+    if not program then
+        error(
+            "LOAD ERROR: " ..
+            path ..
+            "\n" ..
+            tostring(err)
+        )
+    end
+
+    return program
 end
 
+local navigation = load("navigation.lua")
+local guidance = load("guidance.lua")
+local actuator = load("actuator.lua")
+local display = load("display.lua")
+
 --------------------------------------------------
--- START
+-- RUN
 --------------------------------------------------
 
 state.system.status = "ONLINE"
 
+local function run(name, program)
+
+    local ok, err =
+        pcall(program)
+
+    if not ok then
+
+        state.system.status = "ERROR"
+        state.system.running = false
+
+        term.clear()
+        term.setCursorPos(1, 1)
+
+        print("MODULE ERROR")
+        print("============")
+        print("")
+        print(name)
+        print("")
+        print(tostring(err))
+        print("")
+        print("Press any key...")
+
+        os.pullEvent("key")
+
+    end
+
+end
+
 parallel.waitForAny(
 
     function()
-        runModule(
-            "NAVIGATION",
-            navigation
-        )
+        run("NAVIGATION", navigation)
     end,
 
     function()
-        runModule(
-            "GUIDANCE",
-            guidance
-        )
+        run("GUIDANCE", guidance)
     end,
 
     function()
-        runModule(
-            "THRUSTER",
-            actuator
-        )
+        run("ACTUATOR", actuator)
     end,
 
     function()
-        runModule(
-            "DISPLAY",
-            display
-        )
+        run("DISPLAY", display)
     end
 
 )
-
---------------------------------------------------
--- SHUTDOWN
---------------------------------------------------
 
 state.system.running = false
 
