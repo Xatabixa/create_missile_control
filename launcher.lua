@@ -194,6 +194,11 @@ local display =
         "display.lua"
     )
 
+local telemetry =
+    loadModule(
+        "telemetry_logger.lua"
+    )
+
 
 --------------------------------------------------
 -- INITIAL SYSTEM STATE
@@ -442,6 +447,40 @@ end
 
 
 --------------------------------------------------
+-- TELEMETRY PROCESS
+--------------------------------------------------
+
+local function telemetryProcess()
+
+    local success,
+    err =
+        pcall(
+            telemetry.run,
+            state
+        )
+
+
+    if not success then
+
+        state.system.error =
+            "TELEMETRY: " ..
+            tostring(
+                err
+            )
+
+
+        state.system.status =
+            "FAULT"
+
+
+        state.system.running =
+            false
+
+    end
+
+end
+
+--------------------------------------------------
 -- ONLINE
 --------------------------------------------------
 
@@ -465,7 +504,9 @@ parallel.waitForAll(
 
     flightProcess,
 
-    displayProcess
+    displayProcess,
+
+    telemetryProcess
 
 )
 
