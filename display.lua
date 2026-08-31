@@ -3,6 +3,7 @@
 --
 -- 5 pages
 -- Two-column interface
+-- Real-time display refresh
 --
 -- 1 = Navigation
 -- 2 = Guidance
@@ -10,8 +11,8 @@
 -- 4 = Flight
 -- 5 = System
 --
--- I = target coordinates
--- S = start position
+-- I = target
+-- S = start
 -- C = control
 -- Q = shutdown
 -- R = cancel input
@@ -24,9 +25,11 @@ local screen =
     peripheral.find("monitor")
     or term.current()
 
+
 local width,
 height =
     screen.getSize()
+
 
 local page = 1
 
@@ -35,31 +38,46 @@ local page = 1
 -- FILES
 --------------------------------------------------
 
-local TARGET_FILE = "target.cfg"
-local START_FILE = "start.cfg"
+local TARGET_FILE =
+    "target.cfg"
+
+local START_FILE =
+    "start.cfg"
 
 
 --------------------------------------------------
--- COLUMN CONFIGURATION
+-- COLUMNS
 --------------------------------------------------
 
 local columnGap = 3
+
 
 local columnWidth =
     math.floor(
         (width - columnGap) / 2
     )
 
+
 local rightColumn =
-    columnWidth + columnGap + 1
+    columnWidth +
+    columnGap +
+    1
 
 
 --------------------------------------------------
--- INITIALIZATION
+-- REFRESH
 --------------------------------------------------
 
-if type(screen.setTextScale) ==
-    "function" then
+local REFRESH_TIME =
+    0.10
+
+
+--------------------------------------------------
+-- INIT
+--------------------------------------------------
+
+if type(screen.setTextScale)
+    == "function" then
 
     pcall(
         screen.setTextScale,
@@ -103,7 +121,7 @@ end
 
 
 --------------------------------------------------
--- WRITE AT POSITION
+-- WRITE
 --------------------------------------------------
 
 local function writeAt(
@@ -114,10 +132,10 @@ local function writeAt(
 )
 
     if y < 1
-        or y > height then
+        or
+        y > height then
 
         return
-
     end
 
 
@@ -130,7 +148,7 @@ local function writeAt(
     local limit =
         maxWidth
         or
-        (width - x + 1)
+        width - x + 1
 
 
     if #value > limit then
@@ -158,7 +176,7 @@ end
 
 
 --------------------------------------------------
--- WRITE LEFT COLUMN
+-- LEFT
 --------------------------------------------------
 
 local function left(
@@ -177,7 +195,7 @@ end
 
 
 --------------------------------------------------
--- WRITE RIGHT COLUMN
+-- RIGHT
 --------------------------------------------------
 
 local function right(
@@ -196,7 +214,7 @@ end
 
 
 --------------------------------------------------
--- FULL WIDTH LINE
+-- FULL
 --------------------------------------------------
 
 local function full(
@@ -215,7 +233,7 @@ end
 
 
 --------------------------------------------------
--- NUMBER FORMAT
+-- NUMBER
 --------------------------------------------------
 
 local function fmt(
@@ -247,7 +265,7 @@ end
 
 
 --------------------------------------------------
--- ANGLE FORMAT
+-- DEGREES
 --------------------------------------------------
 
 local function deg(
@@ -282,11 +300,8 @@ local function status(
 )
 
     if value == true then
-
         return "ON"
-
     end
-
 
     return "OFF"
 
@@ -359,9 +374,7 @@ local function saveTarget(
 
 
     if not file then
-
         return false
-
     end
 
 
@@ -371,23 +384,17 @@ local function saveTarget(
                 x =
                     tonumber(
                         state.target.x
-                    )
-                    or
-                    0,
+                    ) or 0,
 
                 y =
                     tonumber(
                         state.target.y
-                    )
-                    or
-                    0,
+                    ) or 0,
 
                 z =
                     tonumber(
                         state.target.z
-                    )
-                    or
-                    0,
+                    ) or 0,
 
                 set =
                     state.target.set
@@ -396,9 +403,7 @@ local function saveTarget(
                 revision =
                     tonumber(
                         state.target.revision
-                    )
-                    or
-                    0
+                    ) or 0
             }
         )
     )
@@ -428,9 +433,7 @@ local function saveStart(
 
 
     if not file then
-
         return false
-
     end
 
 
@@ -440,23 +443,17 @@ local function saveStart(
                 x =
                     tonumber(
                         state.startPosition.x
-                    )
-                    or
-                    0,
+                    ) or 0,
 
                 y =
                     tonumber(
                         state.startPosition.y
-                    )
-                    or
-                    0,
+                    ) or 0,
 
                 z =
                     tonumber(
                         state.startPosition.z
-                    )
-                    or
-                    0,
+                    ) or 0,
 
                 set =
                     state.startPosition.set
@@ -577,25 +574,17 @@ local function drawNavigation(
     local p =
         n.position
         or
-        {
-            x = 0,
-            y = 0,
-            z = 0
-        }
+        {}
 
 
     local v =
         n.velocity
         or
-        {
-            x = 0,
-            y = 0,
-            z = 0
-        }
+        {}
 
 
     --------------------------------------------------
-    -- LEFT COLUMN
+    -- LEFT
     --------------------------------------------------
 
     left(
@@ -604,7 +593,7 @@ local function drawNavigation(
         tostring(
             n.status
             or
-            "OFFLINE"
+            "OFF"
         )
     )
 
@@ -653,82 +642,73 @@ local function drawNavigation(
 
     left(
         14,
-        "VX " ..
-        fmt(v.x, 2)
-    )
-
-
-    left(
-        15,
-        "VY " ..
-        fmt(v.y, 2)
-    )
-
-
-    left(
-        16,
-        "VZ " ..
-        fmt(v.z, 2)
-    )
-
-
-    left(
-        17,
         "HDG " ..
         deg(n.heading)
     )
 
 
     left(
-        18,
+        15,
         "PITCH " ..
         deg(n.pitch)
     )
 
 
     left(
-        19,
+        16,
         "ROLL " ..
         deg(n.roll)
     )
 
 
+    left(
+        17,
+        "VX " ..
+        fmt(v.x, 2)
+    )
+
+
+    left(
+        18,
+        "VY " ..
+        fmt(v.y, 2)
+    )
+
+
+    left(
+        19,
+        "VZ " ..
+        fmt(v.z, 2)
+    )
+
+
+    left(
+        20,
+        "ANG X " ..
+        fmt(n.angularRateX, 2)
+    )
+
+
+    left(
+        21,
+        "ANG Y " ..
+        fmt(n.angularRateY, 2)
+    )
+
+
+    left(
+        22,
+        "ANG Z " ..
+        fmt(n.angularRateZ, 2)
+    )
+
+
     --------------------------------------------------
-    -- RIGHT COLUMN
+    -- RIGHT
     --------------------------------------------------
 
     right(
         7,
-        "ANG X " ..
-        fmt(
-            n.angularRateX,
-            2
-        )
-    )
-
-
-    right(
-        8,
-        "ANG Y " ..
-        fmt(
-            n.angularRateY,
-            2
-        )
-    )
-
-
-    right(
-        9,
-        "ANG Z " ..
-        fmt(
-            n.angularRateZ,
-            2
-        )
-    )
-
-
-    right(
-        10,
         "DIST " ..
         fmt(
             n.distance,
@@ -738,7 +718,7 @@ local function drawNavigation(
 
 
     right(
-        11,
+        8,
         "BRG " ..
         deg(
             n.bearing
@@ -747,7 +727,7 @@ local function drawNavigation(
 
 
     right(
-        12,
+        9,
         "ELV " ..
         deg(
             n.elevation
@@ -756,14 +736,8 @@ local function drawNavigation(
 
 
     right(
-        13,
-        "DXYZ"
-    )
-
-
-    right(
-        14,
-        "DX " ..
+        10,
+        "TGT DX " ..
         fmt(
             n.targetDeltaX,
             1
@@ -772,8 +746,8 @@ local function drawNavigation(
 
 
     right(
-        15,
-        "DY " ..
+        11,
+        "TGT DY " ..
         fmt(
             n.targetDeltaY,
             1
@@ -782,8 +756,8 @@ local function drawNavigation(
 
 
     right(
-        16,
-        "DZ " ..
+        12,
+        "TGT DZ " ..
         fmt(
             n.targetDeltaZ,
             1
@@ -792,7 +766,91 @@ local function drawNavigation(
 
 
     right(
+        13,
+        "LOCAL X " ..
+        fmt(
+            n.localTargetX,
+            3
+        )
+    )
+
+
+    right(
+        14,
+        "LOCAL Y " ..
+        fmt(
+            n.localTargetY,
+            3
+        )
+    )
+
+
+    right(
+        15,
+        "LOCAL Z " ..
+        fmt(
+            n.localTargetZ,
+            3
+        )
+    )
+
+
+    right(
+        16,
+        "T YAW " ..
+        deg(
+            n.targetYaw
+        )
+    )
+
+
+    right(
         17,
+        "T PITCH " ..
+        deg(
+            n.targetPitch
+        )
+    )
+
+
+    right(
+        18,
+        "FWD X " ..
+        fmt(
+            n.forward
+            and
+            n.forward.x,
+            3
+        )
+    )
+
+
+    right(
+        19,
+        "FWD Y " ..
+        fmt(
+            n.forward
+            and
+            n.forward.y,
+            3
+        )
+    )
+
+
+    right(
+        20,
+        "FWD Z " ..
+        fmt(
+            n.forward
+            and
+            n.forward.z,
+            3
+        )
+    )
+
+
+    right(
+        21,
         "TABLE " ..
         status(
             n.navigationTable
@@ -801,39 +859,8 @@ local function drawNavigation(
 
 
     right(
-        18,
-        "ALT " ..
-        status(
-            n.altitudeSensor
-        )
-    )
-
-
-    right(
-        19,
-        "GIM " ..
-        status(
-            n.gimbalSensor
-        )
-    )
-
-
-    right(
-        20,
-        "VEL " ..
-        status(
-            n.velocitySensor
-        )
-    )
-
-
-    --------------------------------------------------
-    -- BOTTOM
-    --------------------------------------------------
-
-    full(
         22,
-        "NAV TARGET: " ..
+        "NAV TGT " ..
         tostring(
             n.navigationTargetStatus
             or
@@ -842,22 +869,25 @@ local function drawNavigation(
     )
 
 
-    full(
+    right(
         23,
-        "MANUAL TARGET: " ..
-        (
-            state.target.set
-            and
-            "SET"
-            or
-            "NONE"
+        "ALT " ..
+        status(
+            n.altitudeSensor
         )
     )
 
 
-    full(
+    right(
         24,
-        "I=TARGET"
+        "GIM " ..
+        status(
+            n.gimbalSensor
+        ) ..
+        " VEL " ..
+        status(
+            n.velocitySensor
+        )
     )
 
 end
@@ -890,17 +920,13 @@ local function drawGuidance(
         or {}
 
 
-    --------------------------------------------------
-    -- LEFT
-    --------------------------------------------------
-
     left(
         7,
         "STATUS " ..
         tostring(
             g.status
             or
-            "OFFLINE"
+            "OFF"
         )
     )
 
@@ -944,19 +970,6 @@ local function drawGuidance(
 
     left(
         11,
-        "TARGET " ..
-        (
-            state.target.set
-            and
-            "SET"
-            or
-            "NONE"
-        )
-    )
-
-
-    left(
-        12,
         "DIST " ..
         fmt(
             n.distance,
@@ -966,7 +979,7 @@ local function drawGuidance(
 
 
     left(
-        13,
+        12,
         "YAW ERR " ..
         deg(
             g.yawError
@@ -975,7 +988,7 @@ local function drawGuidance(
 
 
     left(
-        14,
+        13,
         "PITCH ERR " ..
         deg(
             g.pitchError
@@ -984,7 +997,7 @@ local function drawGuidance(
 
 
     left(
-        15,
+        14,
         "YAW RATE " ..
         deg(
             g.yawRate
@@ -993,7 +1006,7 @@ local function drawGuidance(
 
 
     left(
-        16,
+        15,
         "PITCH RATE " ..
         deg(
             g.pitchRate
@@ -1002,7 +1015,7 @@ local function drawGuidance(
 
 
     left(
-        17,
+        16,
         "YAW CMD " ..
         fmt(
             g.commandY,
@@ -1012,7 +1025,7 @@ local function drawGuidance(
 
 
     left(
-        18,
+        17,
         "PITCH CMD " ..
         fmt(
             g.commandX,
@@ -1020,10 +1033,6 @@ local function drawGuidance(
         )
     )
 
-
-    --------------------------------------------------
-    -- RIGHT
-    --------------------------------------------------
 
     right(
         7,
@@ -1087,7 +1096,7 @@ local function drawGuidance(
 
     right(
         13,
-        "T BRG " ..
+        "T YAW " ..
         deg(
             g.targetBearing
         )
@@ -1096,7 +1105,7 @@ local function drawGuidance(
 
     right(
         14,
-        "T ELV " ..
+        "T PITCH " ..
         deg(
             g.targetElevation
         )
@@ -1143,49 +1152,45 @@ local function drawGuidance(
     )
 
 
-    --------------------------------------------------
-    -- BOTTOM
-    --------------------------------------------------
-
-    full(
+    right(
         20,
-        "NAV TABLE " ..
+        "TABLE " ..
         status(
             n.navigationTable
         )
     )
 
 
-    full(
+    right(
         21,
-        "GIMBAL " ..
+        "GIM " ..
         status(
             n.gimbalSensor
         )
     )
 
 
-    full(
+    right(
         22,
-        "VELOCITY " ..
-        status(
-            n.velocitySensor
-        )
-    )
-
-
-    full(
-        23,
-        "ALTITUDE " ..
+        "ALT " ..
         status(
             n.altitudeSensor
         )
     )
 
 
-    full(
+    right(
+        23,
+        "VEL " ..
+        status(
+            n.velocitySensor
+        )
+    )
+
+
+    right(
         24,
-        "CONTROL C=ON/OFF"
+        "C=CONTROL"
     )
 
 end
@@ -1218,10 +1223,6 @@ local function drawEngine(
         or {}
 
 
-    --------------------------------------------------
-    -- LEFT
-    --------------------------------------------------
-
     left(
         7,
         "ENGINES " ..
@@ -1240,8 +1241,7 @@ local function drawEngine(
             t.commandedEngines
             or
             0
-        )
-        ..
+        ) ..
         "/" ..
         tostring(
             t.engineCount
@@ -1257,7 +1257,7 @@ local function drawEngine(
         tostring(
             t.status
             or
-            "OFFLINE"
+            "OFF"
         )
     )
 
@@ -1355,10 +1355,6 @@ local function drawEngine(
     )
 
 
-    --------------------------------------------------
-    -- RIGHT
-    --------------------------------------------------
-
     local engines =
         t.engines
         or {}
@@ -1367,7 +1363,7 @@ local function drawEngine(
     for i = 1,
         math.min(
             #engines,
-            4
+            8
         ) do
 
         local entry =
@@ -1412,9 +1408,18 @@ local function drawEngine(
 
 
     right(
-        12,
-        "ERRORS " ..
-        tostring(
+        16,
+        "ONLINE " ..
+        status(
+            t.online
+        )
+    )
+
+
+    right(
+        17,
+        "ERROR " ..
+        (
             next(
                 t.commandErrors
                 or
@@ -1429,57 +1434,14 @@ local function drawEngine(
 
 
     right(
-        13,
-        "ONLINE " ..
-        status(
-            t.online
-        )
-    )
-
-
-    right(
-        14,
-        "POWER " ..
+        18,
+        "LIMIT " ..
         fmt(
-            t.power,
+            g.flightMaxVector,
             3
         )
     )
 
-
-    right(
-        15,
-        "THRUST " ..
-        fmt(
-            t.thrust,
-            3
-        )
-    )
-
-
-    right(
-        16,
-        "VEC X " ..
-        fmt(
-            t.vectorX,
-            3
-        )
-    )
-
-
-    right(
-        17,
-        "VEC Y " ..
-        fmt(
-            t.vectorY,
-            3
-        )
-    )
-
-
-    --------------------------------------------------
-    -- BOTTOM
-    --------------------------------------------------
 
     full(
         20,
@@ -1499,22 +1461,7 @@ local function drawEngine(
 
 
     full(
-        21,
-        "TARGET VECTOR " ..
-        fmt(
-            t.targetVectorX,
-            3
-        ) ..
-        " / " ..
-        fmt(
-            t.targetVectorY,
-            3
-        )
-    )
-
-
-    full(
-        23,
+        22,
         "ALL ENGINES CONTROLLED"
     )
 
@@ -1559,10 +1506,6 @@ local function drawFlight(
         or {}
 
 
-    --------------------------------------------------
-    -- LEFT
-    --------------------------------------------------
-
     left(
         7,
         "PHASE " ..
@@ -1598,7 +1541,7 @@ local function drawFlight(
 
     left(
         10,
-        "PHASE " ..
+        "PHASE T " ..
         fmt(
             f.phaseElapsed,
             1
@@ -1621,9 +1564,7 @@ local function drawFlight(
         12,
         "BOOST END " ..
         fmt(
-            g.boostAltitude
-            or
-            100,
+            g.boostAltitude,
             0
         )
     )
@@ -1633,9 +1574,7 @@ local function drawFlight(
         13,
         "CRUISE ALT " ..
         fmt(
-            g.cruiseAltitude
-            or
-            300,
+            g.cruiseAltitude,
             0
         )
     )
@@ -1653,7 +1592,7 @@ local function drawFlight(
 
     left(
         15,
-        "VERT SPEED " ..
+        "VERT " ..
         fmt(
             n.verticalSpeed,
             2
@@ -1673,19 +1612,13 @@ local function drawFlight(
 
     left(
         17,
-        "TERM DIST " ..
+        "TERM " ..
         fmt(
-            g.terminalDistance
-            or
-            500,
+            g.terminalDistance,
             0
         )
     )
 
-
-    --------------------------------------------------
-    -- RIGHT
-    --------------------------------------------------
 
     right(
         7,
@@ -1741,19 +1674,6 @@ local function drawFlight(
 
     right(
         11,
-        "TARGET " ..
-        (
-            state.target.set
-            and
-            "SET"
-            or
-            "NONE"
-        )
-    )
-
-
-    right(
-        12,
         "CONTROL " ..
         (
             state.system.controlEnabled
@@ -1766,8 +1686,8 @@ local function drawFlight(
 
 
     right(
-        13,
-        "MAX VEC " ..
+        12,
+        "VECTOR " ..
         fmt(
             g.flightMaxVector,
             3
@@ -1776,7 +1696,7 @@ local function drawFlight(
 
 
     right(
-        14,
+        13,
         "YAW CMD " ..
         fmt(
             g.commandY,
@@ -1786,7 +1706,7 @@ local function drawFlight(
 
 
     right(
-        15,
+        14,
         "PITCH CMD " ..
         fmt(
             g.commandX,
@@ -1796,7 +1716,7 @@ local function drawFlight(
 
 
     right(
-        16,
+        15,
         "YAW ERR " ..
         deg(
             g.yawError
@@ -1805,7 +1725,7 @@ local function drawFlight(
 
 
     right(
-        17,
+        16,
         "PITCH ERR " ..
         deg(
             g.pitchError
@@ -1814,8 +1734,8 @@ local function drawFlight(
 
 
     right(
-        18,
-        "TARGET BRG " ..
+        17,
+        "T YAW " ..
         deg(
             g.targetBearing
         )
@@ -1823,8 +1743,8 @@ local function drawFlight(
 
 
     right(
-        19,
-        "TARGET ELV " ..
+        18,
+        "T PITCH " ..
         deg(
             g.targetElevation
         )
@@ -1832,20 +1752,7 @@ local function drawFlight(
 
 
     full(
-        21,
-        "START " ..
-        (
-            state.startPosition.set
-            and
-            "SET"
-            or
-            "NONE"
-        )
-    )
-
-
-    full(
-        22,
+        20,
         "TARGET " ..
         (
             state.target.set
@@ -1858,8 +1765,8 @@ local function drawFlight(
 
 
     full(
-        23,
-        "T XYZ " ..
+        21,
+        "XYZ " ..
         fmt(
             state.target.x,
             0
@@ -1873,6 +1780,24 @@ local function drawFlight(
         fmt(
             state.target.z,
             0
+        )
+    )
+
+
+    full(
+        22,
+        "NAV TABLE " ..
+        status(
+            n.navigationTable
+        )
+    )
+
+
+    full(
+        23,
+        "GUIDANCE " ..
+        status(
+            g.online
         )
     )
 
@@ -1922,10 +1847,6 @@ local function drawSystem(
         or {}
 
 
-    --------------------------------------------------
-    -- LEFT
-    --------------------------------------------------
-
     left(
         7,
         "SYS " ..
@@ -1950,7 +1871,7 @@ local function drawSystem(
 
     left(
         9,
-        "FLIGHT " ..
+        "FLT " ..
         tostring(
             f.phase
             or
@@ -2014,10 +1935,6 @@ local function drawSystem(
         )
     )
 
-
-    --------------------------------------------------
-    -- RIGHT
-    --------------------------------------------------
 
     right(
         7,
@@ -2103,9 +2020,9 @@ local function drawSystem(
 
     right(
         14,
-        "SPEED " ..
+        "ALT " ..
         fmt(
-            n.speed,
+            n.altitude,
             1
         )
     )
@@ -2113,9 +2030,9 @@ local function drawSystem(
 
     right(
         15,
-        "ALT " ..
+        "SPEED " ..
         fmt(
-            n.altitude,
+            n.speed,
             1
         )
     )
@@ -2130,10 +2047,6 @@ local function drawSystem(
         )
     )
 
-
-    --------------------------------------------------
-    -- TARGET
-    --------------------------------------------------
 
     full(
         18,
@@ -2167,38 +2080,45 @@ local function drawSystem(
 
     full(
         21,
-        "START " ..
-        (
-            state.startPosition.set
-            and
-            "SET"
+        "ENGINES " ..
+        tostring(
+            t.engineCount
             or
-            "NONE"
+            0
         )
     )
 
 
     full(
         22,
-        "NAV SIGNALS " ..
-        status(
-            n.online
+        "COMMAND " ..
+        tostring(
+            t.commandedEngines
+            or
+            0
+        ) ..
+        "/" ..
+        tostring(
+            t.engineCount
+            or
+            0
         )
     )
 
 
     full(
         23,
-        "GUIDANCE " ..
-        status(
-            g.online
+        "NAV UPDATE " ..
+        fmt(
+            n.lastUpdate,
+            2
         )
     )
 
 
     full(
         24,
-        "I TGT | S START | C CTRL"
+        "REALTIME 0.10s"
     )
 
 end
@@ -2211,6 +2131,10 @@ end
 local function draw(
     state
 )
+
+    state.display.page =
+        page
+
 
     if page == 1 then
 
@@ -2369,10 +2293,6 @@ local function coordinateInput(
             os.pullEventRaw()
 
 
-        --------------------------------------------------
-        -- CHARACTER
-        --------------------------------------------------
-
         if event ==
             "char" then
 
@@ -2392,10 +2312,6 @@ local function coordinateInput(
 
             end
 
-
-        --------------------------------------------------
-        -- KEY
-        --------------------------------------------------
 
         elseif event ==
             "key" then
@@ -2489,7 +2405,7 @@ end
 
 
 --------------------------------------------------
--- SET TARGET
+-- TARGET
 --------------------------------------------------
 
 local function setTarget(
@@ -2543,7 +2459,7 @@ end
 
 
 --------------------------------------------------
--- SET START
+-- START
 --------------------------------------------------
 
 local function setStart(
@@ -2719,10 +2635,6 @@ local function run(
     end
 
 
-    --------------------------------------------------
-    -- ENSURE TARGET STATE
-    --------------------------------------------------
-
     if type(
         state.target
     ) ~= "table" then
@@ -2734,17 +2646,12 @@ local function run(
             z = 0,
 
             set = false,
-
             revision = 0
 
         }
 
     end
 
-
-    --------------------------------------------------
-    -- ENSURE START STATE
-    --------------------------------------------------
 
     if type(
         state.startPosition
@@ -2772,18 +2679,20 @@ local function run(
         true
 
 
-    --------------------------------------------------
-    -- LOAD START
-    --------------------------------------------------
-
     loadStart(
         state
     )
 
 
     --------------------------------------------------
-    -- INITIAL DRAW
+    -- REAL-TIME TIMER
     --------------------------------------------------
+
+    local timer =
+        os.startTimer(
+            REFRESH_TIME
+        )
+
 
     draw(
         state
@@ -2791,17 +2700,22 @@ local function run(
 
 
     --------------------------------------------------
-    -- MAIN LOOP
+    -- LOOP
     --------------------------------------------------
 
     while state.system
         and
         state.system.running do
 
+
         local event,
         a =
             os.pullEventRaw()
 
+
+        --------------------------------------------------
+        -- KEY
+        --------------------------------------------------
 
         if event ==
             "key" then
@@ -2811,6 +2725,30 @@ local function run(
                 a
             )
 
+
+        --------------------------------------------------
+        -- REAL-TIME REFRESH
+        --------------------------------------------------
+
+        elseif event ==
+            "timer"
+            and
+            a == timer then
+
+            draw(
+                state
+            )
+
+
+            timer =
+                os.startTimer(
+                    REFRESH_TIME
+                )
+
+
+        --------------------------------------------------
+        -- SHUTDOWN
+        --------------------------------------------------
 
         elseif event ==
             "terminate" then
