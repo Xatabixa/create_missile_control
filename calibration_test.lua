@@ -1,11 +1,12 @@
--- Missile Control Axis Calibration
+-- Missile Control Axis Calibration v2
 -- CC:Tweaked
 --
--- Purpose:
---   Determine how vector commands affect the
---   physical rotation of the rocket.
+-- PURPOSE:
+--   Determine the dynamic response of the rocket to
+--   vector commands by measuring ANGULAR VELOCITY
+--   during the thrust pulse.
 --
--- Real APIs:
+-- REAL APIs:
 --
 -- Liquid Vector Thruster:
 --   setVector()
@@ -21,66 +22,70 @@
 --   DO NOT run launcher.lua at the same time.
 --   actuator.lua must NOT be running.
 --
--- IMPORTANT:
 --   Rocket must be UNFROZEN during the pulse.
 --
--- TEST:
+-- TESTS:
 --   +X
 --   -X
 --   +Y
 --   -Y
 --
--- Each test:
---   1. sets vector
---   2. starts low thrust
---   3. waits for the pulse
---   4. immediately stops thrust
---   5. reads Gimbal Sensor
+-- TEST SETTINGS:
+--   vector = +/-0.05
+--   power  = 0.30
+--   pulse  = 0.50 s
 --
--- CONTROLS:
---   SPACE     = start calibration
---   UP/DOWN   = scroll results
---   PAGEUP    = fast scroll up
---   PAGEDOWN  = fast scroll down
---   HOME      = top
---   END       = bottom
---   R         = redraw
---   Q         = quit
+-- The test samples angular rates every 0.02 s
+-- and finds the strongest signed response.
 --
--- Every final state is forced to:
+-- CONTROLS AFTER TEST:
+--   UP / DOWN      scroll
+--   PAGEUP        fast up
+--   PAGEDOWN      fast down
+--   HOME          top
+--   END           bottom
+--   R             redraw
+--   Q             exit
+--
+-- FINAL SAFETY:
 --   vector = 0,0
---   power  = 0
+--   power = 0
 
 --------------------------------------------------
 -- SETTINGS
 --------------------------------------------------
 
+local TEST_VECTOR = 0.05
+
 local TEST_POWER = 0.30
 
 local PULSE_TIME = 0.50
 
-local SETTLE_TIME = 0.70
+local SAMPLE_TIME = 0.02
 
-local BETWEEN_TESTS = 1.00
+local SETTLE_TIME = 1.00
+
+local BETWEEN_TESTS = 1.50
 
 
 --------------------------------------------------
--- STATE
+-- PERIPHERALS
 --------------------------------------------------
 
 local thrusters = {}
 
 local gimbal = nil
 
+
+--------------------------------------------------
+-- RESULTS
+--------------------------------------------------
+
 local results = {}
 
 local reportLines = {}
 
 local scroll = 0
-
-local mode = "START"
-
-local running = true
 
 
 --------------------------------------------------
@@ -94,9 +99,7 @@ local function safeCall(
 )
 
     if not device then
-
         return false, nil
-
     end
 
 
@@ -105,9 +108,7 @@ local function safeCall(
 
 
     if type(fn) ~= "function" then
-
         return false, nil
-
     end
 
 
@@ -123,9 +124,7 @@ local function safeCall(
 
 
     if not ok then
-
         return false, nil
-
     end
 
 
@@ -160,12 +159,9 @@ local function scanThrusters()
         if type(methods) ==
             "table" then
 
-            local hasVector =
-                false
+            local hasVector = false
 
-
-            local hasPower =
-                false
+            local hasPower = false
 
 
             for _, method in ipairs(
@@ -175,14 +171,12 @@ local function scanThrusters()
                 if method ==
                     "setVector" then
 
-                    hasVector =
-                        true
+                    hasVector = true
 
                 elseif method ==
                     "setPowerNormalized" then
 
-                    hasPower =
-                        true
+                    hasPower = true
 
                 end
 
@@ -246,7 +240,8 @@ local function scanGimbal()
 
             if device then
 
-                gimbal = device
+                gimbal =
+                    device
 
                 return
 
@@ -260,11 +255,12 @@ end
 
 
 --------------------------------------------------
--- FORMAT
+-- NUMBER FORMAT
 --------------------------------------------------
 
 local function fmt(
-    value
+    value,
+    digits
 )
 
     value =
@@ -272,14 +268,16 @@ local function fmt(
 
 
     if not value then
-
         return "---"
-
     end
 
 
     return string.format(
-        "%.6f",
+        "%." ..
+        tostring(
+            digits or 6
+        ) ..
+        "f",
         value
     )
 
@@ -287,7 +285,7 @@ end
 
 
 --------------------------------------------------
--- DEGREES
+-- DEGREE FORMAT
 --------------------------------------------------
 
 local function deg(
@@ -299,17 +297,13 @@ local function deg(
 
 
     if not value then
-
         return "---"
-
     end
 
 
     return string.format(
-        "%.4f",
-        math.deg(
-            value
-        )
+        "%.5f",
+        math.deg(value)
     )
 
 end
@@ -320,115 +314,22 @@ end
 --------------------------------------------------
 
 local function magnitude(
-    value
+    x,
+    y,
+    z
 )
 
     return math.sqrt(
-        value.x * value.x +
-        value.y * value.y +
-        value.z * value.z
+        x * x +
+        y * y +
+        z * z
     )
 
 end
 
 
 --------------------------------------------------
--- DOMINANT AXIS
---------------------------------------------------
-
-local function dominantAxis(
-    value
-)
-
-    local ax =
-        math.abs(
-            value.x
-        )
-
-
-    local ay =
-        math.abs(
-            value.y
-        )
-
-
-    local az =
-        math.abs(
-            value.z
-        )
-
-
-    if ax >= ay
-        and
-        ax >= az then
-
-        return "X"
-
-    elseif ay >= ax
-        and
-        ay >= az then
-
-        return "Y"
-
-    else
-
-        return "Z"
-
-    end
-
-end
-
-
---------------------------------------------------
--- READ GIMBAL ANGLES
---------------------------------------------------
-
-local function readAngles()
-
-    if not gimbal then
-        return nil
-    end
-
-
-    local ok,
-        values =
-        safeCall(
-            gimbal,
-            "getAnglesRad"
-        )
-
-
-    if not ok
-        or
-        type(values) ~= "table" then
-
-        return nil
-
-    end
-
-
-    return {
-        x =
-            tonumber(
-                values[1]
-            ) or 0,
-
-        y =
-            tonumber(
-                values[2]
-            ) or 0,
-
-        z =
-            tonumber(
-                values[3]
-            ) or 0
-    }
-
-end
-
-
---------------------------------------------------
--- READ ANGULAR RATES
+-- READ ANGULAR RATE
 --------------------------------------------------
 
 local function readRates()
@@ -456,6 +357,7 @@ local function readRates()
 
 
     return {
+
         x =
             tonumber(
                 values[1]
@@ -470,13 +372,64 @@ local function readRates()
             tonumber(
                 values[3]
             ) or 0
+
     }
 
 end
 
 
 --------------------------------------------------
--- SET ALL VECTOR
+-- READ ANGLES
+--------------------------------------------------
+
+local function readAngles()
+
+    if not gimbal then
+        return nil
+    end
+
+
+    local ok,
+        values =
+        safeCall(
+            gimbal,
+            "getAnglesRad"
+        )
+
+
+    if not ok
+        or
+        type(values) ~= "table" then
+
+        return nil
+
+    end
+
+
+    return {
+
+        x =
+            tonumber(
+                values[1]
+            ) or 0,
+
+        y =
+            tonumber(
+                values[2]
+            ) or 0,
+
+        z =
+            tonumber(
+                values[3]
+            ) or 0
+
+    }
+
+end
+
+
+--------------------------------------------------
+-- SET ALL VECTORS
 --------------------------------------------------
 
 local function setAllVector(
@@ -522,10 +475,10 @@ end
 
 
 --------------------------------------------------
--- CENTER
+-- EMERGENCY STOP
 --------------------------------------------------
 
-local function center()
+local function stopAll()
 
     setAllVector(
         0,
@@ -541,53 +494,563 @@ end
 
 
 --------------------------------------------------
--- READ ENGINE VECTORS
+-- WAIT SETTLE
 --------------------------------------------------
 
-local function readEngineVectors()
+local function settle()
 
-    local values = {}
+    stopAll()
 
+    sleep(
+        SETTLE_TIME
+    )
 
-    for i, entry in ipairs(
-        thrusters
-    ) do
-
-        local xOK,
-            x =
-            pcall(
-                entry.device.getVectorX
-            )
+end
 
 
-        local yOK,
-            y =
-            pcall(
-                entry.device.getVectorY
-            )
+--------------------------------------------------
+-- INITIALIZE BASELINE
+--------------------------------------------------
+
+local function getBaseline()
+
+    local rates =
+        readRates()
 
 
-        if not xOK then
-            x = nil
-        end
+    local angles =
+        readAngles()
 
 
-        if not yOK then
-            y = nil
-        end
+    if not rates then
 
-
-        values[i] = {
-            x = x,
-            y = y,
-            name =
-                entry.name
-        }
+        return nil, nil
 
     end
 
 
-    return values
+    return rates, angles
+
+end
+
+
+--------------------------------------------------
+-- RUN ONE DYNAMIC TEST
+--------------------------------------------------
+
+local function runTest(
+    label,
+    commandX,
+    commandY
+)
+
+    print("")
+    print(
+        "================================"
+    )
+    print(
+        "TEST " .. label
+    )
+    print(
+        "VECTOR X=" ..
+        tostring(commandX) ..
+        " Y=" ..
+        tostring(commandY)
+    )
+    print(
+        "POWER=" ..
+        tostring(TEST_POWER)
+    )
+    print(
+        "PULSE=" ..
+        tostring(PULSE_TIME) ..
+        " s"
+    )
+    print(
+        "================================"
+    )
+
+
+    --------------------------------------------------
+    -- RESET
+    --------------------------------------------------
+
+    settle()
+
+
+    --------------------------------------------------
+    -- BASELINE
+    --------------------------------------------------
+
+    local baselineRates,
+        baselineAngles =
+        getBaseline()
+
+
+    if not baselineRates then
+
+        print(
+            "ERROR: Gimbal rate unavailable"
+        )
+
+
+        stopAll()
+
+
+        return nil
+
+    end
+
+
+    --------------------------------------------------
+    -- PEAK DATA
+    --------------------------------------------------
+
+    local peak = {
+
+        x = 0,
+        y = 0,
+        z = 0
+
+    }
+
+
+    local peakAbs = {
+
+        x = 0,
+        y = 0,
+        z = 0
+
+    }
+
+
+    local peakTime = {
+
+        x = 0,
+        y = 0,
+        z = 0
+
+    }
+
+
+    local peakAngles = {
+
+        x = baselineAngles
+            and
+            baselineAngles.x
+            or
+            0,
+
+        y = baselineAngles
+            and
+            baselineAngles.y
+            or
+            0,
+
+        z = baselineAngles
+            and
+            baselineAngles.z
+            or
+            0
+
+    }
+
+
+    local sampleCount = 0
+
+
+    local startTime =
+        os.clock()
+
+
+    --------------------------------------------------
+    -- VECTOR FIRST
+    --------------------------------------------------
+
+    setAllVector(
+        commandX,
+        commandY
+    )
+
+
+    --------------------------------------------------
+    -- POWER SECOND
+    --------------------------------------------------
+
+    setAllPower(
+        TEST_POWER
+    )
+
+
+    --------------------------------------------------
+    -- SAMPLE LOOP
+    --------------------------------------------------
+
+    while true do
+
+        local elapsed =
+            os.clock() -
+            startTime
+
+
+        if elapsed >=
+            PULSE_TIME then
+
+            break
+
+        end
+
+
+        local rates =
+            readRates()
+
+
+        local angles =
+            readAngles()
+
+
+        if rates then
+
+            sampleCount =
+                sampleCount + 1
+
+
+            --------------------------------------------------
+            -- DELTA FROM BASELINE
+            --------------------------------------------------
+
+            local dx =
+                rates.x -
+                baselineRates.x
+
+
+            local dy =
+                rates.y -
+                baselineRates.y
+
+
+            local dz =
+                rates.z -
+                baselineRates.z
+
+
+            --------------------------------------------------
+            -- PEAK X
+            --------------------------------------------------
+
+            if math.abs(dx) >
+                peakAbs.x then
+
+                peakAbs.x =
+                    math.abs(dx)
+
+                peak.x =
+                    dx
+
+                peakTime.x =
+                    elapsed
+
+
+                if angles then
+
+                    peakAngles.x =
+                        angles.x
+
+                end
+
+            end
+
+
+            --------------------------------------------------
+            -- PEAK Y
+            --------------------------------------------------
+
+            if math.abs(dy) >
+                peakAbs.y then
+
+                peakAbs.y =
+                    math.abs(dy)
+
+                peak.y =
+                    dy
+
+                peakTime.y =
+                    elapsed
+
+
+                if angles then
+
+                    peakAngles.y =
+                        angles.y
+
+                end
+
+            end
+
+
+            --------------------------------------------------
+            -- PEAK Z
+            --------------------------------------------------
+
+            if math.abs(dz) >
+                peakAbs.z then
+
+                peakAbs.z =
+                    math.abs(dz)
+
+                peak.z =
+                    dz
+
+                peakTime.z =
+                    elapsed
+
+
+                if angles then
+
+                    peakAngles.z =
+                        angles.z
+
+                end
+
+            end
+
+        end
+
+
+        sleep(
+            SAMPLE_TIME
+        )
+
+    end
+
+
+    --------------------------------------------------
+    -- STOP
+    --------------------------------------------------
+
+    stopAll()
+
+
+    --------------------------------------------------
+    -- RESULT
+    --------------------------------------------------
+
+    local strongestAxis =
+        "NONE"
+
+
+    local strongestValue =
+        0
+
+
+    if peakAbs.x >
+        strongestValue then
+
+        strongestValue =
+            peakAbs.x
+
+        strongestAxis =
+            "X"
+
+    end
+
+
+    if peakAbs.y >
+        strongestValue then
+
+        strongestValue =
+            peakAbs.y
+
+        strongestAxis =
+            "Y"
+
+    end
+
+
+    if peakAbs.z >
+        strongestValue then
+
+        strongestValue =
+            peakAbs.z
+
+        strongestAxis =
+            "Z"
+
+    end
+
+
+    local strongestSigned =
+        0
+
+
+    if strongestAxis ==
+        "X" then
+
+        strongestSigned =
+            peak.x
+
+
+    elseif strongestAxis ==
+        "Y" then
+
+        strongestSigned =
+            peak.y
+
+
+    elseif strongestAxis ==
+        "Z" then
+
+        strongestSigned =
+            peak.z
+
+    end
+
+
+    local result = {
+
+        label =
+            label,
+
+        commandX =
+            commandX,
+
+        commandY =
+            commandY,
+
+        baselineRates =
+            baselineRates,
+
+        peakRate =
+            peak,
+
+        peakAbs =
+            peakAbs,
+
+        peakTime =
+            peakTime,
+
+        peakAngles =
+            peakAngles,
+
+        strongestAxis =
+            strongestAxis,
+
+        strongestSigned =
+            strongestSigned,
+
+        strongestMagnitude =
+            strongestValue,
+
+        sampleCount =
+            sampleCount
+
+    }
+
+
+    --------------------------------------------------
+    -- CONSOLE
+    --------------------------------------------------
+
+    print("")
+
+
+    print(
+        "PEAK ANGULAR RATE DELTA"
+    )
+
+
+    print(
+        "X = " ..
+        fmt(
+            peak.x
+        )
+    )
+
+
+    print(
+        "Y = " ..
+        fmt(
+            peak.y
+        )
+    )
+
+
+    print(
+        "Z = " ..
+        fmt(
+            peak.z
+        )
+    )
+
+
+    print("")
+
+
+    print(
+        "PEAK DEGREES/SEC"
+    )
+
+
+    print(
+        "X = " ..
+        deg(
+            peak.x
+        ) ..
+        " deg/s"
+    )
+
+
+    print(
+        "Y = " ..
+        deg(
+            peak.y
+        ) ..
+        " deg/s"
+    )
+
+
+    print(
+        "Z = " ..
+        deg(
+            peak.z
+        ) ..
+        " deg/s"
+    )
+
+
+    print("")
+
+
+    print(
+        "STRONGEST AXIS = " ..
+        strongestAxis
+    )
+
+
+    print(
+        "STRONGEST SIGN = " ..
+        (
+            strongestSigned >= 0
+            and
+            "+"
+            or
+            "-"
+        )
+    )
+
+
+    print(
+        "SAMPLES = " ..
+        tostring(
+            sampleCount
+        )
+    )
+
+
+    stopAll()
+
+
+    return result
 
 end
 
@@ -602,11 +1065,18 @@ local function buildReport()
 
 
     reportLines[#reportLines + 1] =
-        "=== CALIBRATION RESULTS ==="
+        "=== DYNAMIC CALIBRATION ==="
 
 
     reportLines[#reportLines + 1] =
         ""
+
+
+    reportLines[#reportLines + 1] =
+        "VECTOR = +/-" ..
+        tostring(
+            TEST_VECTOR
+        )
 
 
     reportLines[#reportLines + 1] =
@@ -625,10 +1095,11 @@ local function buildReport()
 
 
     reportLines[#reportLines + 1] =
-        "THRUSTERS = " ..
+        "SAMPLE = " ..
         tostring(
-            #thrusters
-        )
+            SAMPLE_TIME
+        ) ..
+        " s"
 
 
     reportLines[#reportLines + 1] =
@@ -636,7 +1107,7 @@ local function buildReport()
 
 
     --------------------------------------------------
-    -- Results
+    -- RESULTS
     --------------------------------------------------
 
     for _, result in ipairs(
@@ -668,59 +1139,27 @@ local function buildReport()
 
 
         reportLines[#reportLines + 1] =
-            "ANGLE DELTA"
-
-
-        reportLines[#reportLines + 1] =
-            "X = " ..
-            deg(
-                result.angleDelta.x
-            ) ..
-            " deg"
-
-
-        reportLines[#reportLines + 1] =
-            "Y = " ..
-            deg(
-                result.angleDelta.y
-            ) ..
-            " deg"
-
-
-        reportLines[#reportLines + 1] =
-            "Z = " ..
-            deg(
-                result.angleDelta.z
-            ) ..
-            " deg"
-
-
-        reportLines[#reportLines + 1] =
-            ""
-
-
-        reportLines[#reportLines + 1] =
-            "RATE DELTA"
+            "PEAK RATE DELTA"
 
 
         reportLines[#reportLines + 1] =
             "X = " ..
             fmt(
-                result.rateDelta.x
+                result.peakRate.x
             )
 
 
         reportLines[#reportLines + 1] =
             "Y = " ..
             fmt(
-                result.rateDelta.y
+                result.peakRate.y
             )
 
 
         reportLines[#reportLines + 1] =
             "Z = " ..
             fmt(
-                result.rateDelta.z
+                result.peakRate.z
             )
 
 
@@ -729,81 +1168,98 @@ local function buildReport()
 
 
         reportLines[#reportLines + 1] =
-            "DOMINANT ANGLE = " ..
-            result.dominantAngleAxis
+            "PEAK DEG/SEC"
 
 
         reportLines[#reportLines + 1] =
-            "DOMINANT RATE = " ..
-            result.dominantRateAxis
+            "X = " ..
+            deg(
+                result.peakRate.x
+            )
 
 
         reportLines[#reportLines + 1] =
-            "ANGLE MAGNITUDE = " ..
+            "Y = " ..
+            deg(
+                result.peakRate.y
+            )
+
+
+        reportLines[#reportLines + 1] =
+            "Z = " ..
+            deg(
+                result.peakRate.z
+            )
+
+
+        reportLines[#reportLines + 1] =
+            ""
+
+
+        reportLines[#reportLines + 1] =
+            "PEAK TIME"
+
+
+        reportLines[#reportLines + 1] =
+            "X = " ..
             fmt(
-                result.angleMagnitude
+                result.peakTime.x,
+                3
+            ) ..
+            " s"
+
+
+        reportLines[#reportLines + 1] =
+            "Y = " ..
+            fmt(
+                result.peakTime.y,
+                3
+            ) ..
+            " s"
+
+
+        reportLines[#reportLines + 1] =
+            "Z = " ..
+            fmt(
+                result.peakTime.z,
+                3
+            ) ..
+            " s"
+
+
+        reportLines[#reportLines + 1] =
+            ""
+
+
+        reportLines[#reportLines + 1] =
+            "STRONGEST AXIS = " ..
+            result.strongestAxis
+
+
+        reportLines[#reportLines + 1] =
+            "STRONGEST SIGN = " ..
+            (
+                result.strongestSigned >= 0
+                and
+                "+"
+                or
+                "-"
             )
 
 
         reportLines[#reportLines + 1] =
-            ""
-
-
-        if result.dominantSign >
-            0 then
-
-            reportLines[#reportLines + 1] =
-                "SIGN = POSITIVE"
-
-        elseif result.dominantSign <
-            0 then
-
-            reportLines[#reportLines + 1] =
-                "SIGN = NEGATIVE"
-
-        else
-
-            reportLines[#reportLines + 1] =
-                "SIGN = ZERO"
-
-        end
+            "STRONGEST RATE = " ..
+            deg(
+                result.strongestMagnitude
+            ) ..
+            " deg/s"
 
 
         reportLines[#reportLines + 1] =
-            ""
-
-
-        --------------------------------------------------
-        -- Engine feedback
-        --------------------------------------------------
-
-        reportLines[#reportLines + 1] =
-            "ENGINE FEEDBACK"
-
-
-        for i, engine in ipairs(
-            result.engineVectors
-            or
-            {}
-        ) do
-
-            reportLines[#reportLines + 1] =
-                "E" ..
-                tostring(i) ..
-                " " ..
-                tostring(
-                    engine.name
-                ) ..
-                " X=" ..
-                fmt(
-                    engine.x
-                ) ..
-                " Y=" ..
-                fmt(
-                    engine.y
-                )
-
-        end
+            "SAMPLES = " ..
+            tostring(
+                result.sampleCount
+            )
 
 
         reportLines[#reportLines + 1] =
@@ -811,6 +1267,10 @@ local function buildReport()
 
     end
 
+
+    --------------------------------------------------
+    -- CONCLUSION
+    --------------------------------------------------
 
     reportLines[#reportLines + 1] =
         "================================"
@@ -889,13 +1349,14 @@ local function drawReport()
 
 
     term.write(
-        "CALIBRATION "
-        ..
-        tostring(scroll)
-        ..
-        "/"
-        ..
-        tostring(maximum)
+        "CALIBRATION " ..
+        tostring(
+            scroll
+        ) ..
+        "/" ..
+        tostring(
+            maximum
+        )
     )
 
 
@@ -946,361 +1407,7 @@ end
 
 
 --------------------------------------------------
--- RUN ONE TEST
---------------------------------------------------
-
-local function runTest(
-    label,
-    commandX,
-    commandY
-)
-
-    print("")
-    print(
-        "================================"
-    )
-    print(
-        "TEST " .. label
-    )
-    print(
-        "VECTOR X=" ..
-        tostring(commandX) ..
-        " Y=" ..
-        tostring(commandY)
-    )
-    print(
-        "POWER " ..
-        tostring(TEST_POWER)
-    )
-    print(
-        "PULSE " ..
-        tostring(PULSE_TIME) ..
-        " seconds"
-    )
-    print(
-        "================================"
-    )
-
-
-    --------------------------------------------------
-    -- RESET
-    --------------------------------------------------
-
-    center()
-
-    sleep(
-        SETTLE_TIME
-    )
-
-
-    --------------------------------------------------
-    -- INITIAL SENSOR STATE
-    --------------------------------------------------
-
-    local beforeAngles =
-        readAngles()
-
-
-    local beforeRates =
-        readRates()
-
-
-    if not beforeAngles then
-
-        print(
-            "ERROR: cannot read Gimbal angles"
-        )
-
-        center()
-
-        return nil
-
-    end
-
-
-    if not beforeRates then
-
-        print(
-            "ERROR: cannot read angular rates"
-        )
-
-        center()
-
-        return nil
-
-    end
-
-
-    --------------------------------------------------
-    -- APPLY VECTOR FIRST
-    --------------------------------------------------
-
-    setAllVector(
-        commandX,
-        commandY
-    )
-
-
-    --------------------------------------------------
-    -- THEN APPLY POWER
-    --------------------------------------------------
-
-    setAllPower(
-        TEST_POWER
-    )
-
-
-    --------------------------------------------------
-    -- PULSE
-    --------------------------------------------------
-
-    sleep(
-        PULSE_TIME
-    )
-
-
-    --------------------------------------------------
-    -- STOP THRUST
-    --------------------------------------------------
-
-    center()
-
-
-    --------------------------------------------------
-    -- WAIT FOR COMMAND TO SETTLE
-    --------------------------------------------------
-
-    sleep(
-        0.10
-    )
-
-
-    --------------------------------------------------
-    -- SENSOR RESULT
-    --------------------------------------------------
-
-    local afterAngles =
-        readAngles()
-
-
-    local afterRates =
-        readRates()
-
-
-    if not afterAngles
-        or
-        not afterRates then
-
-        print(
-            "ERROR: cannot read result"
-        )
-
-        center()
-
-        return nil
-
-    end
-
-
-    --------------------------------------------------
-    -- CALCULATE DELTA
-    --------------------------------------------------
-
-    local angleDelta = {
-
-        x =
-            afterAngles.x -
-            beforeAngles.x,
-
-        y =
-            afterAngles.y -
-            beforeAngles.y,
-
-        z =
-            afterAngles.z -
-            beforeAngles.z
-
-    }
-
-
-    local rateDelta = {
-
-        x =
-            afterRates.x -
-            beforeRates.x,
-
-        y =
-            afterRates.y -
-            beforeRates.y,
-
-        z =
-            afterRates.z -
-            beforeRates.z
-
-    }
-
-
-    --------------------------------------------------
-    -- DOMINANT AXIS
-    --------------------------------------------------
-
-    local dominant =
-        dominantAxis(
-            angleDelta
-        )
-
-
-    local dominantValue
-
-
-    if dominant == "X" then
-
-        dominantValue =
-            angleDelta.x
-
-
-    elseif dominant == "Y" then
-
-        dominantValue =
-            angleDelta.y
-
-
-    else
-
-        dominantValue =
-            angleDelta.z
-
-    end
-
-
-    --------------------------------------------------
-    -- RESULT
-    --------------------------------------------------
-
-    local result = {
-
-        label =
-            label,
-
-        commandX =
-            commandX,
-
-        commandY =
-            commandY,
-
-        angleDelta =
-            angleDelta,
-
-        rateDelta =
-            rateDelta,
-
-        angleMagnitude =
-            magnitude(
-                angleDelta
-            ),
-
-        dominantAngleAxis =
-            dominant,
-
-        dominantRateAxis =
-            dominantAxis(
-                rateDelta
-            ),
-
-        dominantSign =
-            dominantValue,
-
-        engineVectors =
-            readEngineVectors()
-
-    }
-
-
-    --------------------------------------------------
-    -- CONSOLE OUTPUT
-    --------------------------------------------------
-
-    print("")
-
-
-    print(
-        "ANGLE DELTA"
-    )
-
-
-    print(
-        "X " ..
-        deg(
-            angleDelta.x
-        ) ..
-        " deg"
-    )
-
-
-    print(
-        "Y " ..
-        deg(
-            angleDelta.y
-        ) ..
-        " deg"
-    )
-
-
-    print(
-        "Z " ..
-        deg(
-            angleDelta.z
-        ) ..
-        " deg"
-    )
-
-
-    print("")
-
-
-    print(
-        "DOMINANT AXIS: " ..
-        dominant
-    )
-
-
-    if dominantValue > 0 then
-
-        print(
-            "SIGN: POSITIVE"
-        )
-
-
-    elseif dominantValue < 0 then
-
-        print(
-            "SIGN: NEGATIVE"
-        )
-
-
-    else
-
-        print(
-            "SIGN: ZERO"
-        )
-
-    end
-
-
-    --------------------------------------------------
-    -- ALWAYS STOP
-    --------------------------------------------------
-
-    center()
-
-
-    return result
-
-end
-
-
---------------------------------------------------
--- START SCREEN
+-- STARTUP SCREEN
 --------------------------------------------------
 
 term.clear()
@@ -1312,45 +1419,56 @@ term.setCursorPos(
 
 
 print(
-    "=== MISSILE CONTROL CALIBRATION ==="
+    "=== DYNAMIC CONTROL CALIBRATION ==="
 )
 
 print("")
 
 print(
-    "Rocket: UNFROZEN"
+    "ROCKET: UNFROZEN"
 )
 
 print(
-    "Actuator: OFF"
+    "ACTUATOR: OFF"
 )
 
 print(
-    "Flight: OFF"
+    "FLIGHT: OFF"
 )
 
 print("")
 
 print(
-    "Power = " ..
+    "VECTOR = +/-" ..
+    tostring(
+        TEST_VECTOR
+    )
+)
+
+print(
+    "POWER = " ..
     tostring(
         TEST_POWER
     )
 )
 
 print(
-    "Pulse = " ..
+    "PULSE = " ..
     tostring(
         PULSE_TIME
     ) ..
-    " seconds"
+    " s"
+)
+
+print(
+    "SAMPLE = " ..
+    tostring(
+        SAMPLE_TIME
+    ) ..
+    " s"
 )
 
 print("")
-
-print(
-    "Thrusters: scanning..."
-)
 
 
 --------------------------------------------------
@@ -1367,7 +1485,7 @@ scanGimbal()
 --------------------------------------------------
 
 print(
-    "Thrusters found: " ..
+    "THRUSTERS FOUND: " ..
     tostring(
         #thrusters
     )
@@ -1377,7 +1495,7 @@ print(
 if #thrusters == 0 then
 
     error(
-        "NO LIQUID VECTOR THRUSTERS FOUND"
+        "NO VECTOR THRUSTERS FOUND"
     )
 
 end
@@ -1393,23 +1511,26 @@ end
 
 
 print(
-    "Gimbal Sensor: OK"
+    "GIMBAL SENSOR: OK"
 )
-
 
 print("")
 
 print(
-    "Press SPACE to start"
+    "The rocket must be FREE."
 )
 
 print(
-    "Press Q to quit"
+    "Press SPACE to start."
+)
+
+print(
+    "Press Q to quit."
 )
 
 
 --------------------------------------------------
--- WAIT START
+-- WAIT
 --------------------------------------------------
 
 while true do
@@ -1430,7 +1551,7 @@ while true do
     elseif key ==
         keys.q then
 
-        center()
+        stopAll()
 
         return
 
@@ -1440,20 +1561,24 @@ end
 
 
 --------------------------------------------------
--- START CALIBRATION
+-- INITIAL SAFE STATE
 --------------------------------------------------
 
-center()
+stopAll()
+
+sleep(
+    1.0
+)
 
 
 --------------------------------------------------
 -- TEST +X
 --------------------------------------------------
 
-result =
+local result =
     runTest(
         "+X",
-        0.05,
+        TEST_VECTOR,
         0
     )
 
@@ -1480,7 +1605,7 @@ sleep(
 result =
     runTest(
         "-X",
-        -0.05,
+        -TEST_VECTOR,
         0
     )
 
@@ -1508,7 +1633,7 @@ result =
     runTest(
         "+Y",
         0,
-        0.05
+        TEST_VECTOR
     )
 
 
@@ -1535,7 +1660,7 @@ result =
     runTest(
         "-Y",
         0,
-        -0.05
+        -TEST_VECTOR
     )
 
 
@@ -1550,20 +1675,22 @@ end
 
 
 --------------------------------------------------
--- FINAL CENTER
+-- FINAL STOP
 --------------------------------------------------
 
-center()
+stopAll()
 
 
 --------------------------------------------------
--- REPORT
+-- BUILD REPORT
 --------------------------------------------------
 
 buildReport()
 
-mode =
-    "RESULTS"
+
+--------------------------------------------------
+-- RESULT SCREEN
+--------------------------------------------------
 
 drawReport()
 
@@ -1572,7 +1699,7 @@ drawReport()
 -- RESULT LOOP
 --------------------------------------------------
 
-while running do
+while true do
 
     local event,
         key =
@@ -1591,6 +1718,7 @@ while running do
         scroll =
             scroll - 1
 
+
         drawReport()
 
 
@@ -1604,6 +1732,7 @@ while running do
         scroll =
             scroll + 1
 
+
         drawReport()
 
 
@@ -1614,7 +1743,7 @@ while running do
     elseif key ==
         keys.pageUp then
 
-        local _, h =
+        local _, height =
             term.getSize()
 
 
@@ -1622,8 +1751,9 @@ while running do
             scroll -
             math.max(
                 1,
-                h - 2
+                height - 2
             )
+
 
         drawReport()
 
@@ -1635,7 +1765,7 @@ while running do
     elseif key ==
         keys.pageDown then
 
-        local _, h =
+        local _, height =
             term.getSize()
 
 
@@ -1643,8 +1773,9 @@ while running do
             scroll +
             math.max(
                 1,
-                h - 2
+                height - 2
             )
+
 
         drawReport()
 
@@ -1659,6 +1790,7 @@ while running do
         scroll =
             0
 
+
         drawReport()
 
 
@@ -1671,6 +1803,7 @@ while running do
 
         scroll =
             #reportLines
+
 
         drawReport()
 
@@ -1694,10 +1827,7 @@ while running do
     elseif key ==
         keys.q then
 
-        center()
-
-        running =
-            false
+        break
 
     end
 
@@ -1708,7 +1838,7 @@ end
 -- FINAL SAFETY
 --------------------------------------------------
 
-center()
+stopAll()
 
 
 term.clear()
@@ -1720,14 +1850,10 @@ term.setCursorPos(
 
 
 print(
-    "CALIBRATION COMPLETE"
+    "DYNAMIC CALIBRATION COMPLETE"
 )
 
 print("")
-
-print(
-    "All thrusters:"
-)
 
 print(
     "VECTOR = 0,0"
