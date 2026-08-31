@@ -1194,7 +1194,6 @@ local function drawGuidance(
 
 end
 
-
 --------------------------------------------------
 -- ENGINE PAGE
 --------------------------------------------------
@@ -1221,6 +1220,10 @@ local function drawEngine(
         state.guidance
         or {}
 
+
+    --------------------------------------------------
+    -- LEFT COLUMN
+    --------------------------------------------------
 
     left(
         7,
@@ -1274,11 +1277,15 @@ local function drawEngine(
     )
 
 
+    --------------------------------------------------
+    -- REQUESTED VECTOR
+    --------------------------------------------------
+
     left(
         11,
-        "CMD X " ..
+        "REQ X " ..
         fmt(
-            g.commandX,
+            t.requestedVectorX,
             3
         )
     )
@@ -1286,19 +1293,23 @@ local function drawEngine(
 
     left(
         12,
-        "CMD Y " ..
+        "REQ Y " ..
         fmt(
-            g.commandY,
+            t.requestedVectorY,
             3
         )
     )
 
 
+    --------------------------------------------------
+    -- APPLIED VECTOR
+    --------------------------------------------------
+
     left(
         13,
-        "TARGET X " ..
+        "OUT X " ..
         fmt(
-            t.targetVectorX,
+            t.appliedVectorX,
             3
         )
     )
@@ -1306,17 +1317,21 @@ local function drawEngine(
 
     left(
         14,
-        "TARGET Y " ..
+        "OUT Y " ..
         fmt(
-            t.targetVectorY,
+            t.appliedVectorY,
             3
         )
     )
 
 
+    --------------------------------------------------
+    -- ACTUAL ENGINE VECTOR
+    --------------------------------------------------
+
     left(
         15,
-        "ACTUAL X " ..
+        "ACT X " ..
         fmt(
             t.vectorX,
             3
@@ -1326,13 +1341,17 @@ local function drawEngine(
 
     left(
         16,
-        "ACTUAL Y " ..
+        "ACT Y " ..
         fmt(
             t.vectorY,
             3
         )
     )
 
+
+    --------------------------------------------------
+    -- POWER / THRUST
+    --------------------------------------------------
 
     left(
         17,
@@ -1353,6 +1372,10 @@ local function drawEngine(
         )
     )
 
+
+    --------------------------------------------------
+    -- RIGHT COLUMN
+    --------------------------------------------------
 
     local engines =
         t.engines
@@ -1406,6 +1429,10 @@ local function drawEngine(
     end
 
 
+    --------------------------------------------------
+    -- ENGINE STATUS
+    --------------------------------------------------
+
     right(
         16,
         "ONLINE " ..
@@ -1442,9 +1469,58 @@ local function drawEngine(
     )
 
 
+    --------------------------------------------------
+    -- FULL WIDTH DIAGNOSTICS
+    --------------------------------------------------
+
     full(
         20,
-        "COMMAND SENT " ..
+        "REQ " ..
+        fmt(
+            t.requestedVectorX,
+            3
+        ) ..
+        " / " ..
+        fmt(
+            t.requestedVectorY,
+            3
+        )
+    )
+
+
+    full(
+        21,
+        "OUT " ..
+        fmt(
+            t.appliedVectorX,
+            3
+        ) ..
+        " / " ..
+        fmt(
+            t.appliedVectorY,
+            3
+        )
+    )
+
+
+    full(
+        22,
+        "ACT " ..
+        fmt(
+            t.vectorX,
+            3
+        ) ..
+        " / " ..
+        fmt(
+            t.vectorY,
+            3
+        )
+    )
+
+
+    full(
+        23,
+        "COMMAND " ..
         tostring(
             t.commandedEngines
             or
@@ -1460,18 +1536,11 @@ local function drawEngine(
 
 
     full(
-        22,
-        "ALL ENGINES CONTROLLED"
-    )
-
-
-    full(
         24,
         "C=CONTROL"
     )
 
 end
-
 
 --------------------------------------------------
 -- FLIGHT PAGE
