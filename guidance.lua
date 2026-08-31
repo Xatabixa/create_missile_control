@@ -1,25 +1,25 @@
 -- Missile Guidance System
 -- CC:Tweaked
 --
--- GUIDANCE VERSION 3
+-- GUIDANCE VERSION 4
 --
--- Main goals:
---   * steering must actually begin after BOOST
---   * allow useful pitch/yaw authority
---   * use angular-rate damping
---   * do not completely disable control at normal
---     maneuvering rates
---   * keep integral control disabled
---
--- Physical control mapping:
---
+-- Control mapping:
 --   commandX -> yaw
 --   commandY -> pitch
 --
--- Current rate mapping:
---
+-- Rate mapping:
 --   yawRate   -> angularRateZ
 --   pitchRate -> angularRateX
+--
+-- Features:
+--   * BOOST keeps the nozzle neutral
+--   * guidance becomes active after PITCH OVER
+--   * fast PITCH OVER ramp
+--   * no integral accumulation
+--   * proportional + derivative control
+--   * rate protection
+--   * phase-dependent vector limits
+--   * command slew limiting
 
 --------------------------------------------------
 -- UPDATE
@@ -29,10 +29,10 @@ local UPDATE_INTERVAL = 0.05
 
 
 --------------------------------------------------
--- PITCH OVER START
+-- PITCH OVER RAMP
 --------------------------------------------------
 
-local START_RAMP_TIME = 3.0
+local START_RAMP_TIME = 0.5
 
 
 --------------------------------------------------
@@ -56,14 +56,15 @@ local YAW_KP = 0.025
 
 local PITCH_KP = 0.035
 
-
 local YAW_KD = 0.060
 
 local PITCH_KD = 0.070
 
 
 --------------------------------------------------
--- INTEGRAL DISABLED
+-- INTEGRAL
+--
+-- Disabled during stabilization testing.
 --------------------------------------------------
 
 local YAW_KI = 0.0
@@ -78,7 +79,6 @@ local PITCH_KI = 0.0
 local YAW_DEADZONE =
     math.rad(0.5)
 
-
 local PITCH_DEADZONE =
     math.rad(0.5)
 
@@ -86,24 +86,19 @@ local PITCH_DEADZONE =
 --------------------------------------------------
 -- RATE PROTECTION
 --
--- Normal maneuvering can easily reach several
--- degrees per second.
---
--- We therefore do NOT kill the controller at
--- 4 deg/s anymore.
+-- Normal maneuvering may produce several degrees/sec.
+-- Control is reduced gradually instead of immediately
+-- dropping to zero.
 --------------------------------------------------
 
 local YAW_RATE_SOFT =
     math.rad(8.0)
 
-
 local YAW_RATE_HARD =
     math.rad(20.0)
 
-
 local PITCH_RATE_SOFT =
     math.rad(8.0)
-
 
 local PITCH_RATE_HARD =
     math.rad(20.0)
@@ -114,7 +109,7 @@ local PITCH_RATE_HARD =
 --------------------------------------------------
 
 local MAX_COMMAND_STEP =
-    0.0020
+    0.0040
 
 
 --------------------------------------------------
@@ -260,10 +255,6 @@ local function rateAuthority(
         )
 
 
-    --------------------------------------------------
-    -- Normal rate
-    --------------------------------------------------
-
     if magnitude <=
         softLimit then
 
@@ -272,11 +263,6 @@ local function rateAuthority(
     end
 
 
-    --------------------------------------------------
-    -- Very high rate:
-    -- reduce but do not instantly kill control
-    --------------------------------------------------
-
     if magnitude >=
         hardLimit then
 
@@ -284,10 +270,6 @@ local function rateAuthority(
 
     end
 
-
-    --------------------------------------------------
-    -- Smooth reduction
-    --------------------------------------------------
 
     local fraction =
         (
@@ -312,7 +294,7 @@ end
 
 
 --------------------------------------------------
--- RESET
+-- RESET OUTPUT
 --------------------------------------------------
 
 local function resetOutput(
@@ -371,7 +353,7 @@ local function run(
 
 
     --------------------------------------------------
-    -- INITIAL
+    -- INITIAL STATE
     --------------------------------------------------
 
     g.online =
@@ -495,7 +477,7 @@ local function run(
 
 
     --------------------------------------------------
-    -- UPDATE
+    -- MAIN UPDATE
     --------------------------------------------------
 
     local function update()
@@ -554,6 +536,18 @@ local function run(
                 false
 
 
+            g.distance =
+                0
+
+
+            g.yawError =
+                0
+
+
+            g.pitchError =
+                0
+
+
             currentCommandX,
             currentCommandY =
                 resetOutput(
@@ -579,41 +573,53 @@ local function run(
 
 
         local px =
-            tonumber(position.x)
+            tonumber(
+                position.x
+            )
             or
             0
 
 
         local py =
-            tonumber(position.y)
+            tonumber(
+                position.y
+            )
             or
             0
 
 
         local pz =
-            tonumber(position.z)
+            tonumber(
+                position.z
+            )
             or
             0
 
 
         --------------------------------------------------
-        -- TARGET
+        -- TARGET POSITION
         --------------------------------------------------
 
         local tx =
-            tonumber(target.x)
+            tonumber(
+                target.x
+            )
             or
             0
 
 
         local ty =
-            tonumber(target.y)
+            tonumber(
+                target.y
+            )
             or
             0
 
 
         local tz =
-            tonumber(target.z)
+            tonumber(
+                target.z
+            )
             or
             0
 
@@ -623,15 +629,18 @@ local function run(
         --------------------------------------------------
 
         local dx =
-            tx - px
+            tx -
+            px
 
 
         local dy =
-            ty - py
+            ty -
+            py
 
 
         local dz =
-            tz - pz
+            tz -
+            pz
 
 
         local distance =
@@ -643,7 +652,7 @@ local function run(
 
 
         --------------------------------------------------
-        -- SAVE TARGET
+        -- PUBLISH TARGET VECTOR
         --------------------------------------------------
 
         g.targetDX =
@@ -742,7 +751,7 @@ local function run(
 
 
         --------------------------------------------------
-        -- ARRIVAL
+        -- TARGET REACHED
         --------------------------------------------------
 
         if distance <=
@@ -789,19 +798,25 @@ local function run(
 
 
         local fx =
-            tonumber(forward.x)
+            tonumber(
+                forward.x
+            )
             or
             0
 
 
         local fy =
-            tonumber(forward.y)
+            tonumber(
+                forward.y
+            )
             or
             0
 
 
         local fz =
-            tonumber(forward.z)
+            tonumber(
+                forward.z
+            )
             or
             -1
 
@@ -840,7 +855,7 @@ local function run(
 
 
         --------------------------------------------------
-        -- NORMALIZE
+        -- NORMALIZE FORWARD
         --------------------------------------------------
 
         fx =
@@ -857,6 +872,10 @@ local function run(
             fz /
             forwardLength
 
+
+        --------------------------------------------------
+        -- NORMALIZE TARGET
+        --------------------------------------------------
 
         local targetLength =
             math.max(
@@ -881,7 +900,7 @@ local function run(
 
 
         --------------------------------------------------
-        -- HORIZONTAL
+        -- HORIZONTAL COMPONENTS
         --------------------------------------------------
 
         local forwardHorizontal =
@@ -985,7 +1004,7 @@ local function run(
 
 
         --------------------------------------------------
-        -- SAVE ERROR
+        -- SAVE ERRORS
         --------------------------------------------------
 
         g.yawError =
@@ -1075,7 +1094,8 @@ local function run(
 
 
         elseif phase ==
-            "PITCH_OVER" or
+            "PITCH_OVER"
+            or
             phase ==
             "PITCH OVER" then
 
@@ -1119,7 +1139,7 @@ local function run(
 
 
         --------------------------------------------------
-        -- CONTROL
+        -- CONTROL ENABLE
         --------------------------------------------------
 
         if state.system.controlEnabled
@@ -1208,9 +1228,9 @@ local function run(
 
 
             controlScale =
-                0.25 +
+                0.50 +
                 (
-                    0.75 *
+                    0.50 *
                     ramp
                 )
 
@@ -1218,7 +1238,7 @@ local function run(
 
 
         --------------------------------------------------
-        -- DEADZONE
+        -- EFFECTIVE ERROR
         --------------------------------------------------
 
         local effectiveYawError =
@@ -1252,7 +1272,7 @@ local function run(
 
 
         --------------------------------------------------
-        -- P
+        -- PROPORTIONAL
         --------------------------------------------------
 
         local yawP =
@@ -1266,7 +1286,9 @@ local function run(
 
 
         --------------------------------------------------
-        -- I
+        -- INTEGRAL
+        --
+        -- Disabled.
         --------------------------------------------------
 
         local yawI =
@@ -1280,9 +1302,7 @@ local function run(
 
 
         --------------------------------------------------
-        -- D
-        --
-        -- D opposes angular velocity.
+        -- DERIVATIVE
         --------------------------------------------------
 
         local yawD =
@@ -1296,7 +1316,7 @@ local function run(
 
 
         --------------------------------------------------
-        -- STORE
+        -- SAVE PID
         --------------------------------------------------
 
         g.yawP =
@@ -1342,8 +1362,7 @@ local function run(
         --------------------------------------------------
         -- PHYSICAL COMMAND
         --
-        -- Sign is intentionally inverted to match the
-        -- physical thruster response from calibration.
+        -- Inverted according to the current calibration.
         --------------------------------------------------
 
         local yawCommand =
@@ -1383,7 +1402,7 @@ local function run(
 
 
         --------------------------------------------------
-        -- LIMIT
+        -- PHASE LIMIT
         --------------------------------------------------
 
         yawCommand =
@@ -1403,7 +1422,7 @@ local function run(
 
 
         --------------------------------------------------
-        -- COMMAND SLEW
+        -- SLEW LIMIT
         --------------------------------------------------
 
         currentCommandX =
@@ -1423,7 +1442,7 @@ local function run(
 
 
         --------------------------------------------------
-        -- OUTPUT
+        -- FINAL COMMAND
         --------------------------------------------------
 
         g.commandX =
@@ -1437,7 +1456,7 @@ local function run(
 
 
     --------------------------------------------------
-    -- RUN LOOP
+    -- RUN
     --------------------------------------------------
 
     while state.system
