@@ -1,81 +1,103 @@
 -- Missile Guidance System
 -- CC:Tweaked
 --
--- FIRST FLIGHT CONTROL VERSION
+-- SECOND FLIGHT / STABILIZATION VERSION
 --
--- Manual target:
---   state.target
+-- Current rocket control geometry:
 --
--- Navigation:
---   state.navigation
+--   commandX -> yaw
+--   commandY -> pitch
 --
--- CONTROL OFF:
---   guidance calculates telemetry/errors
---   actuator must keep engines neutral
+-- Gimbal calibration:
+--   pitch reaction was observed mainly on Gimbal X
+--   yaw reaction is treated as Gimbal Z
 --
--- CONTROL ON:
---   PID steering becomes active
+-- The first flight showed excessive rotation after
+-- entering PITCH OVER.
 --
--- IMPORTANT:
--- Command mapping for current rocket:
+-- Therefore this version is intentionally conservative:
 --
---   commandX -> yaw channel
---   commandY -> pitch channel
+--   * small P gain
+--   * small D damping
+--   * integral disabled
+--   * very small steering limits
+--   * very slow command slew
 --
--- This matches the current planned actuator geometry.
---
--- The controller uses:
---   P = attitude error
---   D = angular-rate damping
---   I = very small long-term correction
---
--- Goal of this version:
---   stable first flight,
---   not maximum maneuverability.
+-- Goal:
+--   prove stable steering before increasing authority.
 
 --------------------------------------------------
 -- SETTINGS
 --------------------------------------------------
 
-local UPDATE_INTERVAL = 0.05
+local UPDATE_INTERVAL =
+    0.05
 
 
 --------------------------------------------------
 -- START STABILIZATION
 --------------------------------------------------
 
-local START_NEUTRAL_TIME = 1.5
-local START_RAMP_TIME = 3.0
+local START_NEUTRAL_TIME =
+    1.5
+
+
+local START_RAMP_TIME =
+    4.0
 
 
 --------------------------------------------------
--- PHASE LIMITS
+-- OUR INTERNAL SAFE LIMITS
+--
+-- These are intentionally lower than the general
+-- flight profile currently published by flight.lua.
 --------------------------------------------------
---
--- These are intentionally conservative.
---
 
-local BOOST_VECTOR = 0.0
+local BOOST_LIMIT =
+    0.0
 
-local PITCH_OVER_VECTOR = 0.030
 
-local CRUISE_VECTOR = 0.060
+local PITCH_OVER_LIMIT =
+    0.020
 
-local TERMINAL_VECTOR = 0.100
+
+local CRUISE_LIMIT =
+    0.035
+
+
+local TERMINAL_LIMIT =
+    0.060
 
 
 --------------------------------------------------
 -- PID
+--
+-- Integral is intentionally disabled for the
+-- second flight.
 --------------------------------------------------
 
-local YAW_KP = 0.045
-local PITCH_KP = 0.055
+local YAW_KP =
+    0.025
 
-local YAW_KD = 0.080
-local PITCH_KD = 0.090
 
-local YAW_KI = 0.00005
-local PITCH_KI = 0.00005
+local PITCH_KP =
+    0.030
+
+
+local YAW_KD =
+    0.035
+
+
+local PITCH_KD =
+    0.045
+
+
+local YAW_KI =
+    0.0
+
+
+local PITCH_KI =
+    0.0
 
 
 --------------------------------------------------
@@ -83,32 +105,39 @@ local PITCH_KI = 0.00005
 --------------------------------------------------
 
 local YAW_DEADZONE =
-    math.rad(0.4)
+    math.rad(0.5)
+
 
 local PITCH_DEADZONE =
-    math.rad(0.4)
+    math.rad(0.5)
 
 
 --------------------------------------------------
 -- INTEGRAL LIMIT
 --------------------------------------------------
 
-local MAX_YAW_INTEGRAL = 0.30
-local MAX_PITCH_INTEGRAL = 0.30
+local MAX_YAW_INTEGRAL =
+    0.10
+
+
+local MAX_PITCH_INTEGRAL =
+    0.10
 
 
 --------------------------------------------------
 -- OUTPUT SLEW
 --------------------------------------------------
 
-local MAX_COMMAND_STEP = 0.0015
+local MAX_COMMAND_STEP =
+    0.0005
 
 
 --------------------------------------------------
--- TARGET REACHED
+-- ARRIVAL
 --------------------------------------------------
 
-local ARRIVAL_DISTANCE = 5.0
+local ARRIVAL_DISTANCE =
+    5.0
 
 
 --------------------------------------------------
@@ -123,7 +152,8 @@ local function clamp(
 
     value =
         tonumber(value)
-        or 0
+        or
+        0
 
 
     if value < minimum then
@@ -141,42 +171,6 @@ local function clamp(
 
 
     return value
-
-end
-
-
---------------------------------------------------
--- NORMALIZE ANGLE
---------------------------------------------------
-
-local function normalizeAngle(
-    angle
-)
-
-    angle =
-        tonumber(angle)
-        or 0
-
-
-    while angle > math.pi do
-
-        angle =
-            angle -
-            math.pi * 2
-
-    end
-
-
-    while angle < -math.pi do
-
-        angle =
-            angle +
-            math.pi * 2
-
-    end
-
-
-    return angle
 
 end
 
@@ -218,6 +212,43 @@ end
 
 
 --------------------------------------------------
+-- NORMALIZE ANGLE
+--------------------------------------------------
+
+local function normalizeAngle(
+    angle
+)
+
+    angle =
+        tonumber(angle)
+        or
+        0
+
+
+    while angle > math.pi do
+
+        angle =
+            angle -
+            math.pi * 2
+
+    end
+
+
+    while angle < -math.pi do
+
+        angle =
+            angle +
+            math.pi * 2
+
+    end
+
+
+    return angle
+
+end
+
+
+--------------------------------------------------
 -- VECTOR LENGTH
 --------------------------------------------------
 
@@ -237,18 +268,14 @@ end
 
 
 --------------------------------------------------
--- RESET COMMANDS
+-- RESET OUTPUT
 --------------------------------------------------
 
-local function resetCommands(
+local function resetOutput(
     state,
     currentX,
     currentY
 )
-
-    local g =
-        state.guidance
-
 
     currentX =
         approach(
@@ -266,11 +293,11 @@ local function resetCommands(
         )
 
 
-    g.commandX =
+    state.guidance.commandX =
         currentX
 
 
-    g.commandY =
+    state.guidance.commandY =
         currentY
 
 
@@ -422,7 +449,7 @@ local function run(
 
 
     --------------------------------------------------
-    -- INTERNAL PID STATE
+    -- INTERNAL STATE
     --------------------------------------------------
 
     local yawIntegral =
@@ -456,7 +483,7 @@ local function run(
 
 
         --------------------------------------------------
-        -- NAVIGATION
+        -- NAVIGATION CHECK
         --------------------------------------------------
 
         if type(n) ~= "table"
@@ -481,7 +508,7 @@ local function run(
 
             currentCommandX,
             currentCommandY =
-                resetCommands(
+                resetOutput(
                     state,
                     currentCommandX,
                     currentCommandY
@@ -494,7 +521,7 @@ local function run(
 
 
         --------------------------------------------------
-        -- TARGET
+        -- TARGET CHECK
         --------------------------------------------------
 
         local target =
@@ -513,27 +540,7 @@ local function run(
                 false
 
 
-            yawIntegral =
-                0
-
-
-            pitchIntegral =
-                0
-
-
             g.distance =
-                0
-
-
-            g.targetDX =
-                0
-
-
-            g.targetDY =
-                0
-
-
-            g.targetDZ =
                 0
 
 
@@ -545,9 +552,17 @@ local function run(
                 0
 
 
+            yawIntegral =
+                0
+
+
+            pitchIntegral =
+                0
+
+
             currentCommandX,
             currentCommandY =
-                resetCommands(
+                resetOutput(
                     state,
                     currentCommandX,
                     currentCommandY
@@ -565,7 +580,8 @@ local function run(
 
         local position =
             n.position
-            or {}
+            or
+            {}
 
 
         local px =
@@ -593,7 +609,7 @@ local function run(
 
 
         --------------------------------------------------
-        -- TARGET COORDINATES
+        -- TARGET
         --------------------------------------------------
 
         local tx =
@@ -625,18 +641,15 @@ local function run(
         --------------------------------------------------
 
         local dx =
-            tx -
-            px
+            tx - px
 
 
         local dy =
-            ty -
-            py
+            ty - py
 
 
         local dz =
-            tz -
-            pz
+            tz - pz
 
 
         local distance =
@@ -666,10 +679,6 @@ local function run(
         g.distance =
             distance
 
-
-        --------------------------------------------------
-        -- KEEP NAVIGATION DATA IN SYNC
-        --------------------------------------------------
 
         n.targetDeltaX =
             dx
@@ -783,7 +792,7 @@ local function run(
 
             currentCommandX,
             currentCommandY =
-                resetCommands(
+                resetOutput(
                     state,
                     currentCommandX,
                     currentCommandY
@@ -801,7 +810,8 @@ local function run(
 
         local forward =
             n.forward
-            or {}
+            or
+            {}
 
 
         local fx =
@@ -849,7 +859,7 @@ local function run(
 
             currentCommandX,
             currentCommandY =
-                resetCommands(
+                resetOutput(
                     state,
                     currentCommandX,
                     currentCommandY
@@ -1027,19 +1037,25 @@ local function run(
 
 
         --------------------------------------------------
-        -- ANGULAR RATES
+        -- RATE MAPPING
         --
-        -- Current working assumption:
-        --   angularRateY = yaw-rate channel
-        --   angularRateX = pitch-rate channel
+        -- Based on current calibration:
         --
-        -- This is the conservative mapping used for
-        -- the first flight.
+        -- X vector produced mainly Z-axis angular
+        -- response.
+        --
+        -- Y vector produced mainly X-axis angular
+        -- response.
+        --
+        -- Therefore:
+        --
+        --   yawRate   = angularRateZ
+        --   pitchRate = angularRateX
         --------------------------------------------------
 
         local yawRate =
             tonumber(
-                n.angularRateY
+                n.angularRateZ
             )
             or
             0
@@ -1063,38 +1079,35 @@ local function run(
 
         --------------------------------------------------
         -- PHASE LIMIT
+        --
+        -- We intentionally cap the values below the
+        -- more aggressive values currently published
+        -- by flight.lua.
         --------------------------------------------------
 
         local phaseLimit =
-            0
+            BOOST_LIMIT
 
 
         if phase ==
-            "BOOST" then
-
-            phaseLimit =
-                BOOST_VECTOR
-
-
-        elseif phase ==
             "PITCH OVER" then
 
             phaseLimit =
-                PITCH_OVER_VECTOR
+                PITCH_OVER_LIMIT
 
 
         elseif phase ==
             "CRUISE" then
 
             phaseLimit =
-                CRUISE_VECTOR
+                CRUISE_LIMIT
 
 
         elseif phase ==
             "TERMINAL" then
 
             phaseLimit =
-                TERMINAL_VECTOR
+                TERMINAL_LIMIT
 
         end
 
@@ -1155,7 +1168,7 @@ local function run(
 
             currentCommandX,
             currentCommandY =
-                resetCommands(
+                resetOutput(
                     state,
                     currentCommandX,
                     currentCommandY
@@ -1180,7 +1193,7 @@ local function run(
 
 
         --------------------------------------------------
-        -- BOOST NEUTRAL
+        -- START NEUTRAL
         --------------------------------------------------
 
         if phase ==
@@ -1203,7 +1216,7 @@ local function run(
 
             currentCommandX,
             currentCommandY =
-                resetCommands(
+                resetOutput(
                     state,
                     currentCommandX,
                     currentCommandY
@@ -1216,10 +1229,7 @@ local function run(
 
 
         --------------------------------------------------
-        -- BOOST TRANSITION
-        --
-        -- Keep commands very small while the rocket
-        -- is leaving vertical boost.
+        -- BOOST RAMP
         --------------------------------------------------
 
         local controlScale =
@@ -1255,56 +1265,16 @@ local function run(
 
         --------------------------------------------------
         -- INTEGRAL
+        --
+        -- Disabled for this flight.
         --------------------------------------------------
 
-        if math.abs(yawError) >
-            YAW_DEADZONE then
-
-            yawIntegral =
-                yawIntegral +
-                yawError *
-                dt
-
-        else
-
-            yawIntegral =
-                yawIntegral *
-                0.90
-
-        end
-
-
-        if math.abs(pitchError) >
-            PITCH_DEADZONE then
-
-            pitchIntegral =
-                pitchIntegral +
-                pitchError *
-                dt
-
-        else
-
-            pitchIntegral =
-                pitchIntegral *
-                0.90
-
-        end
-
-
         yawIntegral =
-            clamp(
-                yawIntegral,
-                -MAX_YAW_INTEGRAL,
-                MAX_YAW_INTEGRAL
-            )
+            0
 
 
         pitchIntegral =
-            clamp(
-                pitchIntegral,
-                -MAX_PITCH_INTEGRAL,
-                MAX_PITCH_INTEGRAL
-            )
+            0
 
 
         --------------------------------------------------
@@ -1336,7 +1306,9 @@ local function run(
 
 
         --------------------------------------------------
-        -- D / RATE DAMPING
+        -- D
+        --
+        -- Small rate damping only.
         --------------------------------------------------
 
         local yawD =
@@ -1378,15 +1350,15 @@ local function run(
 
 
         g.yawIntegral =
-            yawIntegral
+            0
 
 
         g.pitchIntegral =
-            pitchIntegral
+            0
 
 
         --------------------------------------------------
-        -- CONTROLLER OUTPUT
+        -- TOTAL
         --------------------------------------------------
 
         local yawCommand =
@@ -1424,7 +1396,7 @@ local function run(
 
 
         --------------------------------------------------
-        -- SCALE
+        -- RAMP
         --------------------------------------------------
 
         yawCommand =
@@ -1438,7 +1410,7 @@ local function run(
 
 
         --------------------------------------------------
-        -- PHASE LIMIT
+        -- LIMIT
         --------------------------------------------------
 
         yawCommand =
@@ -1458,7 +1430,7 @@ local function run(
 
 
         --------------------------------------------------
-        -- CORRECT AXIS MAPPING
+        -- ACTUAL AXIS MAPPING
         --
         -- X = yaw
         -- Y = pitch
@@ -1473,7 +1445,7 @@ local function run(
 
 
         --------------------------------------------------
-        -- SMOOTH
+        -- SLEW LIMIT
         --------------------------------------------------
 
         currentCommandX =
@@ -1502,6 +1474,7 @@ local function run(
 
         g.commandY =
             currentCommandY
+
 
     end
 

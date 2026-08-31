@@ -32,6 +32,33 @@ local MIN_PITCH_OVER_TIME = 3.0
 
 
 --------------------------------------------------
+-- GUIDANCE VECTOR LIMITS
+--
+-- Conservative values for the second flight.
+--
+-- BOOST:
+--   no vector steering
+--
+-- PITCH OVER:
+--   very small steering authority
+--
+-- CRUISE:
+--   limited steering authority
+--
+-- TERMINAL:
+--   still deliberately conservative
+--------------------------------------------------
+
+local BOOST_VECTOR_LIMIT = 0.000
+
+local PITCH_OVER_VECTOR_LIMIT = 0.020
+
+local CRUISE_VECTOR_LIMIT = 0.035
+
+local TERMINAL_VECTOR_LIMIT = 0.060
+
+
+--------------------------------------------------
 -- UPDATE
 --------------------------------------------------
 
@@ -128,6 +155,7 @@ local function run(state)
             phase then
 
             return
+
         end
 
 
@@ -252,6 +280,16 @@ local function run(state)
 
         if not distance then
 
+            distance =
+                tonumber(
+                    state.navigation.targetDistance
+                )
+
+        end
+
+
+        if not distance then
+
             return nil
 
         end
@@ -362,9 +400,11 @@ local function run(state)
             state.flight.active =
                 false
 
+
             setPhase(
                 "ABORT"
             )
+
 
             return
 
@@ -630,7 +670,7 @@ local function run(state)
 
 
         --------------------------------------------------
-        -- ALTITUDE DATA
+        -- ALTITUDE / DISTANCE
         --------------------------------------------------
 
         state.flight.altitude =
@@ -642,51 +682,38 @@ local function run(state)
 
 
         --------------------------------------------------
-        -- VECTOR LIMIT
+        -- CONSERVATIVE VECTOR LIMITS
+        --
+        -- This is the value Guidance and Actuator
+        -- will see during the current phase.
         --------------------------------------------------
 
         if state.flight.phase ==
             "BOOST" then
 
-            --------------------------------------------------
-            -- Almost straight during vertical boost.
-            --------------------------------------------------
-
             state.guidance.flightMaxVector =
-                0.035
+                BOOST_VECTOR_LIMIT
 
 
         elseif state.flight.phase ==
             "PITCH OVER" then
 
-            --------------------------------------------------
-            -- Gentle turning during pitch-over.
-            --------------------------------------------------
-
             state.guidance.flightMaxVector =
-                0.070
+                PITCH_OVER_VECTOR_LIMIT
 
 
         elseif state.flight.phase ==
             "CRUISE" then
 
-            --------------------------------------------------
-            -- Normal cruise corrections.
-            --------------------------------------------------
-
             state.guidance.flightMaxVector =
-                0.150
+                CRUISE_VECTOR_LIMIT
 
 
         elseif state.flight.phase ==
             "TERMINAL" then
 
-            --------------------------------------------------
-            -- Full available correction.
-            --------------------------------------------------
-
             state.guidance.flightMaxVector =
-                0.250
+                TERMINAL_VECTOR_LIMIT
 
 
         else
@@ -722,7 +749,6 @@ local function run(state)
     while state.system
         and
         state.system.running do
-
 
         --------------------------------------------------
         -- CONTROL
@@ -800,6 +826,7 @@ local function run(state)
 
             state.flight.phaseChanged =
                 true
+
 
             previousPhase =
                 state.flight.phase

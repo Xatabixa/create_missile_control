@@ -1,46 +1,26 @@
 -- Missile Telemetry Logger
 -- CC:Tweaked
 --
--- Writes flight telemetry to:
---   flight_log.txt
+-- Compact flight log.
 --
--- This module does NOT control anything.
--- It only reads the shared state.
+-- The log is overwritten on every startup.
 --
--- It is intended to run in parallel with:
---   navigation
---   guidance
---   actuator
---   target
---   flight
---   display
+-- Logged:
+--   TIME
+--   PHASE
+--   ALT
+--   SPEED
+--   DIST
+--   YAW_ERR
+--   PITCH_ERR
+--   YAW_RATE
+--   PITCH_RATE
+--   CMD_X
+--   CMD_Y
+--   OUT_X
+--   OUT_Y
 --
--- DATA LOGGED:
---   time
---   phase
---   position
---   altitude
---   speed
---   target distance
---   yaw error
---   pitch error
---   yaw rate
---   pitch rate
---   yaw command
---   pitch command
---   requested vector
---   applied vector
---   actual vector
---   power
---   thrust
---
--- FILE:
---   flight_log.txt
---
--- A new session header is appended every startup.
---
--- IMPORTANT:
--- No engine command is ever sent by this module.
+-- This module never controls engines.
 
 --------------------------------------------------
 -- SETTINGS
@@ -49,19 +29,15 @@
 local LOG_FILE =
     "flight_log.txt"
 
-
--- Normal standby logging.
 local STANDBY_INTERVAL =
-    0.50
+    1.0
 
-
--- Faster logging during flight.
 local FLIGHT_INTERVAL =
-    0.10
+    0.20
 
 
 --------------------------------------------------
--- SAFE NUMBER
+-- NUMBER
 --------------------------------------------------
 
 local function number(
@@ -71,16 +47,12 @@ local function number(
     value =
         tonumber(value)
 
-
     if not value then
-
         return "nan"
-
     end
 
-
     return string.format(
-        "%.6f",
+        "%.4f",
         value
     )
 
@@ -88,7 +60,7 @@ end
 
 
 --------------------------------------------------
--- SAFE TEXT
+-- TEXT
 --------------------------------------------------
 
 local function text(
@@ -96,30 +68,22 @@ local function text(
 )
 
     if value == nil then
-
         return "nil"
-
     end
 
-
-    local result =
-        tostring(value)
-
-
-    result =
-        result:gsub(
-            "[%c%s]+",
+    return tostring(value)
+        :gsub(
+            "[%c%s,]+",
             "_"
         )
-
-
-    return result
 
 end
 
 
 --------------------------------------------------
 -- OPEN LOG
+--
+-- "w" intentionally overwrites the previous log.
 --------------------------------------------------
 
 local function openLog()
@@ -127,42 +91,14 @@ local function openLog()
     local file =
         fs.open(
             LOG_FILE,
-            "a"
+            "w"
         )
 
-
     if not file then
-
         return nil
-
     end
-
 
     return file
-
-end
-
-
---------------------------------------------------
--- FLUSH
---------------------------------------------------
-
-local function flush(
-    file
-)
-
-    if not file then
-        return
-    end
-
-
-    pcall(
-        function()
-
-            file.flush()
-
-        end
-    )
 
 end
 
@@ -180,7 +116,6 @@ local function writeLine(
         return false
     end
 
-
     local ok =
         pcall(
             function()
@@ -189,13 +124,14 @@ local function writeLine(
                     line
                 )
 
-                flush(
-                    file
+                pcall(
+                    function()
+                        file.flush()
+                    end
                 )
 
             end
         )
-
 
     return ok
 
@@ -218,103 +154,37 @@ local function writeHeader(
 
     local target =
         state.target
-        or
-        {}
+        or {}
 
 
     local start =
         state.startPosition
-        or
-        {}
+        or {}
 
 
     writeLine(
         file,
-        ""
+        "MISSILE FLIGHT LOG"
     )
 
 
     writeLine(
         file,
-        "========================================"
+        "TARGET=" ..
+        number(target.x) ..
+        "," ..
+        number(target.y) ..
+        "," ..
+        number(target.z)
     )
 
 
     writeLine(
         file,
-        "MISSILE TELEMETRY SESSION"
-    )
-
-
-    writeLine(
-        file,
-        "START_TIME=" ..
-        number(
-            os.clock()
-        )
-    )
-
-
-    writeLine(
-        file,
-        "TARGET_X=" ..
-        number(
-            target.x
-        )
-    )
-
-
-    writeLine(
-        file,
-        "TARGET_Y=" ..
-        number(
-            target.y
-        )
-    )
-
-
-    writeLine(
-        file,
-        "TARGET_Z=" ..
-        number(
-            target.z
-        )
-    )
-
-
-    writeLine(
-        file,
-        "TARGET_SET=" ..
-        text(
-            target.set
-        )
-    )
-
-
-    writeLine(
-        file,
-        "START_X=" ..
-        number(
-            start.x
-        )
-    )
-
-
-    writeLine(
-        file,
-        "START_Z=" ..
-        number(
-            start.z
-        )
-    )
-
-
-    writeLine(
-        file,
-        "START_SET=" ..
-        text(
-            start.set
-        )
+        "START=" ..
+        number(start.x) ..
+        "," ..
+        number(start.z)
     )
 
 
@@ -326,28 +196,17 @@ local function writeHeader(
 
     writeLine(
         file,
-        "========================================"
-    )
-
-
-    writeLine(
-        file,
-        "TIME,PHASE,ACTIVE,CONTROL," ..
-        "X,Y,Z,ALT,SPEED,DIST," ..
+        "TIME,PHASE,ALT,SPEED,DIST," ..
         "YAW_ERR,PITCH_ERR," ..
         "YAW_RATE,PITCH_RATE," ..
-        "YAW_CMD,PITCH_CMD," ..
-        "REQ_X,REQ_Y," ..
-        "OUT_X,OUT_Y," ..
-        "ACT_X,ACT_Y," ..
-        "POWER,THRUST"
+        "CMD_X,CMD_Y,OUT_X,OUT_Y"
     )
 
 end
 
 
 --------------------------------------------------
--- GET CURRENT TELEMETRY
+-- BUILD COMPACT LINE
 --------------------------------------------------
 
 local function buildLine(
@@ -356,58 +215,22 @@ local function buildLine(
 
     local navigation =
         state.navigation
-        or
-        {}
+        or {}
 
 
     local guidance =
         state.guidance
-        or
-        {}
+        or {}
 
 
     local thruster =
         state.thruster
-        or
-        {}
+        or {}
 
 
     local flight =
         state.flight
-        or
-        {}
-
-
-    local position =
-        navigation.position
-        or
-        {}
-
-
-    --------------------------------------------------
-    -- ACTIVE
-    --------------------------------------------------
-
-    local active =
-        flight.active == true
-
-
-    local control =
-        state.system
-        and
-        state.system.controlEnabled == true
-
-
-    --------------------------------------------------
-    -- PHASE
-    --------------------------------------------------
-
-    local phase =
-        flight.phase
-        or
-        guidance.flightPhase
-        or
-        "UNKNOWN"
+        or {}
 
 
     --------------------------------------------------
@@ -435,135 +258,113 @@ local function buildLine(
 
 
     --------------------------------------------------
-    -- TARGET ERRORS
+    -- PHASE
     --------------------------------------------------
 
-    local yawError =
-        guidance.yawError
+    local phase =
+        flight.phase
         or
-        navigation.targetYaw
+        guidance.flightPhase
         or
-        0
-
-
-    local pitchError =
-        guidance.pitchError
-        or
-        navigation.targetPitch
-        or
-        0
+        "UNKNOWN"
 
 
     --------------------------------------------------
-    -- COMMANDS
+    -- POSITION / ALTITUDE
     --------------------------------------------------
 
-    local yawCommand =
+    local altitude =
+        navigation.altitude
+
+
+    if altitude == nil then
+
+        altitude =
+            navigation.position
+            and
+            navigation.position.y
+
+    end
+
+
+    --------------------------------------------------
+    -- COMMAND
+    --------------------------------------------------
+
+    local commandX =
         guidance.commandX
         or
         0
 
 
-    local pitchCommand =
+    local commandY =
         guidance.commandY
         or
         0
 
 
     --------------------------------------------------
-    -- REQUESTED VECTOR
+    -- APPLIED
     --------------------------------------------------
 
-    local requestedX =
-        thruster.requestedVectorX
-
-
-    if requestedX == nil then
-
-        requestedX =
-            guidance.commandX
-
-    end
-
-
-    local requestedY =
-        thruster.requestedVectorY
-
-
-    if requestedY == nil then
-
-        requestedY =
-            guidance.commandY
-
-    end
-
-
-    --------------------------------------------------
-    -- APPLIED VECTOR
-    --------------------------------------------------
-
-    local appliedX =
+    local outX =
         thruster.appliedVectorX
 
 
-    if appliedX == nil then
+    if outX == nil then
 
-        appliedX =
+        outX =
             thruster.targetVectorX
 
     end
 
 
-    local appliedY =
+    local outY =
         thruster.appliedVectorY
 
 
-    if appliedY == nil then
+    if outY == nil then
 
-        appliedY =
+        outY =
             thruster.targetVectorY
 
     end
 
 
     --------------------------------------------------
-    -- ACTUAL VECTOR
+    -- RATE
+    --
+    -- Use Guidance values first because Guidance
+    -- contains the controller's currently selected
+    -- rate channels.
     --------------------------------------------------
 
-    local actualX =
-        thruster.vectorX
+    local yawRate =
+        guidance.yawRate
 
 
-    local actualY =
-        thruster.vectorY
+    if yawRate == nil then
+
+        yawRate =
+            navigation.angularRateZ
+
+    end
 
 
-    --------------------------------------------------
-    -- POSITION
-    --------------------------------------------------
-
-    local x =
-        position.x
-        or
-        0
+    local pitchRate =
+        guidance.pitchRate
 
 
-    local y =
-        position.y
-        or
-        navigation.altitude
-        or
-        0
+    if pitchRate == nil then
 
+        pitchRate =
+            navigation.angularRateX
 
-    local z =
-        position.z
-        or
-        0
+    end
 
 
     --------------------------------------------------
-    -- LOG LINE
+    -- LINE
     --------------------------------------------------
 
     return table.concat(
@@ -579,24 +380,8 @@ local function buildLine(
                 phase
             ),
 
-            active
-                and
-                "1"
-                or
-                "0",
-
-            control
-                and
-                "1"
-                or
-                "0",
-
-            number(x),
-            number(y),
-            number(z),
-
             number(
-                navigation.altitude
+                altitude
             ),
 
             number(
@@ -608,63 +393,39 @@ local function buildLine(
             ),
 
             number(
-                yawError
-            ),
-
-            number(
-                pitchError
-            ),
-
-            number(
-                guidance.yawRate
+                guidance.yawError
                 or
-                navigation.angularRateY
+                0
             ),
 
             number(
-                guidance.pitchRate
+                guidance.pitchError
                 or
-                navigation.angularRateX
+                0
             ),
 
             number(
-                yawCommand
+                yawRate
             ),
 
             number(
-                pitchCommand
+                pitchRate
             ),
 
             number(
-                requestedX
+                commandX
             ),
 
             number(
-                requestedY
+                commandY
             ),
 
             number(
-                appliedX
+                outX
             ),
 
             number(
-                appliedY
-            ),
-
-            number(
-                actualX
-            ),
-
-            number(
-                actualY
-            ),
-
-            number(
-                thruster.power
-            ),
-
-            number(
-                thruster.thrust
+                outY
             )
 
         },
@@ -675,21 +436,16 @@ end
 
 
 --------------------------------------------------
--- LOGGING LOOP
+-- RUN
 --------------------------------------------------
 
 local function run(
     state
 )
 
-    --------------------------------------------------
-    -- STATE
-    --------------------------------------------------
-
     state.telemetry =
         state.telemetry
-        or
-        {}
+        or {}
 
 
     state.telemetry.online =
@@ -712,12 +468,8 @@ local function run(
         0
 
 
-    state.telemetry.lastWrite =
-        0
-
-
     --------------------------------------------------
-    -- FILE
+    -- OPEN
     --------------------------------------------------
 
     local file =
@@ -749,7 +501,7 @@ local function run(
 
 
     --------------------------------------------------
-    -- SESSION HEADER
+    -- HEADER
     --------------------------------------------------
 
     writeHeader(
@@ -759,18 +511,27 @@ local function run(
 
 
     --------------------------------------------------
-    -- MAIN LOOP
+    -- LOOP
     --------------------------------------------------
 
     while state.system
         and
         state.system.running do
 
+
+        --------------------------------------------------
+        -- BUILD
+        --------------------------------------------------
+
         local line =
             buildLine(
                 state
             )
 
+
+        --------------------------------------------------
+        -- WRITE
+        --------------------------------------------------
 
         if line then
 
@@ -786,10 +547,6 @@ local function run(
                 state.telemetry.samples =
                     state.telemetry.samples +
                     1
-
-
-                state.telemetry.lastWrite =
-                    os.clock()
 
 
                 state.telemetry.status =
@@ -811,7 +568,7 @@ local function run(
 
 
         --------------------------------------------------
-        -- Flight frequency
+        -- FREQUENCY
         --------------------------------------------------
 
         local interval =
@@ -836,7 +593,7 @@ local function run(
 
 
     --------------------------------------------------
-    -- FINAL ENTRY
+    -- FINAL LINE
     --------------------------------------------------
 
     local finalLine =
@@ -856,15 +613,12 @@ local function run(
 
 
     --------------------------------------------------
-    -- END SESSION
+    -- FOOTER
     --------------------------------------------------
 
     writeLine(
         file,
-        "END_SESSION=" ..
-        number(
-            os.clock()
-        )
+        "END"
     )
 
 
@@ -879,27 +633,19 @@ local function run(
     )
 
 
-    writeLine(
-        file,
-        "========================================"
-    )
-
-
     pcall(
         function()
-
             file.close()
-
         end
     )
 
 
-    state.telemetry.status =
-        "OFFLINE"
-
-
     state.telemetry.online =
         false
+
+
+    state.telemetry.status =
+        "OFFLINE"
 
 end
 
