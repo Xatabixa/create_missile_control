@@ -1453,6 +1453,8 @@ local function updateTargetVector(
     n.targetDistance =
         distance
 
+    n.distance =
+        distance
 
     n.hasNavTarget =
         true
