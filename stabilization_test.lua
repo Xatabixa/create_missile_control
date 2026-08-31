@@ -1,107 +1,41 @@
 -- Vertical Stabilization Test
 -- CC:Tweaked
 --
--- Completely standalone.
+-- Standalone test.
 -- NO require()
 --
--- Purpose:
---   Test whether the rocket can keep its attitude
---   approximately vertical while the engine is running.
---
--- IMPORTANT:
---   This program does NOT control engine power.
---   Set thrust separately.
---
 -- Controls:
---   Q = stop test and return all nozzles to neutral
+--   Q = stop
 --
--- Current control model:
---
---   command X -> yaw correction
---   command Y -> pitch correction
---
--- Roll is intentionally not controlled here because
--- the current vector-thruster interface gives us only
--- the common X/Y command.
+-- Engine thrust is NOT controlled here.
+-- Set thrust manually on the engine controller.
 
 --------------------------------------------------
 -- SETTINGS
 --------------------------------------------------
 
-local UPDATE_INTERVAL =
-    0.05
+local UPDATE_INTERVAL = 0.05
 
+local MAX_VECTOR = 0.100
 
---------------------------------------------------
--- TEST LIMIT
---
--- This is the maximum vector command used by the
--- stabilization test.
---------------------------------------------------
+local PITCH_KP = 0.025
+local PITCH_KD = 0.100
 
-local MAX_VECTOR =
-    0.100
-
+local YAW_KP = 0.020
+local YAW_KD = 0.080
 
 --------------------------------------------------
--- PID / PD
+-- FUNCTIONS
 --------------------------------------------------
 
-local YAW_KP =
-    0.020
+local function clamp(value, minValue, maxValue)
 
-
-local PITCH_KP =
-    0.025
-
-
-local YAW_KD =
-    0.080
-
-
-local PITCH_KD =
-    0.100
-
-
---------------------------------------------------
--- ANGLE DEADZONE
---------------------------------------------------
-
-local YAW_DEADZONE =
-    math.rad(0.25)
-
-
-local PITCH_DEADZONE =
-    math.rad(0.25)
-
-
---------------------------------------------------
--- RATE LIMIT
---
--- Above this angular rate the stabilization command
--- is reduced rather than amplified.
---------------------------------------------------
-
-local MAX_SAFE_RATE =
-    math.rad(25)
-
-
---------------------------------------------------
--- HELPERS
---------------------------------------------------
-
-local function clamp(
-    value,
-    minimum,
-    maximum
-)
-
-    if value < minimum then
-        return minimum
+    if value < minValue then
+        return minValue
     end
 
-    if value > maximum then
-        return maximum
+    if value > maxValue then
+        return maxValue
     end
 
     return value
@@ -109,505 +43,80 @@ local function clamp(
 end
 
 
+local function degrees(rad)
+
+    return rad * 180 / math.pi
+
+end
+
+
 --------------------------------------------------
--- PERIPHERAL FIND
+-- FIND GIMBAL SENSOR
 --------------------------------------------------
 
-local function findFirstType(
-    peripheralType
-)
+local gimbal = nil
+local gimbalName = nil
 
-    for _, name in ipairs(
-        peripheral.getNames()
-    ) do
+for _, name in ipairs(peripheral.getNames()) do
 
-        if peripheral.hasType(
-            name,
-            peripheralType
-        ) then
+    if peripheral.hasType(name, "gimbal_sensor") then
 
-            if peripheral.isPresent(
-                name
-            ) then
+        gimbal = peripheral.wrap(name)
+        gimbalName = name
+        break
 
-                local device =
-                    peripheral.wrap(
-                        name
-                    )
+    end
 
-                if device then
+end
 
-                    return device,
-                        name
 
-                end
+--------------------------------------------------
+-- FIND VECTOR THRUSTERS
+--------------------------------------------------
 
-            end
+local thrusters = {}
+
+for _, name in ipairs(peripheral.getNames()) do
+
+    if peripheral.hasType(
+        name,
+        "liquid_vector_thruster"
+    ) then
+
+        local device =
+            peripheral.wrap(name)
+
+        if device then
+
+            table.insert(
+                thrusters,
+                {
+                    name = name,
+                    device = device
+                }
+            )
 
         end
 
     end
 
-    return nil, nil
-
 end
 
 
 --------------------------------------------------
--- FIND ALL VECTOR THRUSTERS
+-- HARDWARE CHECK
 --------------------------------------------------
 
-local function findThrusters()
+term.clear()
+term.setCursorPos(1, 1)
 
-    local result =
-        {}
+print("VERTICAL STABILIZATION TEST")
+print("============================")
+print()
 
+if not gimbal then
 
-    for _, name in ipairs(
-        peripheral.getNames()
-    ) do
-
-        if peripheral.hasType(
-            name,
-            "liquid_vector_thruster"
-        ) then
-
-            local device =
-                peripheral.wrap(
-                    name
-                )
-
-
-            if device then
-
-                table.insert(
-                    result,
-                    {
-                        name =
-                            name,
-
-                        device =
-                            device
-                    }
-                )
-
-            end
-
-        end
-
-    end
-
-
-    return result
-
-end
-
-
---------------------------------------------------
--- SET VECTOR
---------------------------------------------------
-
-local function setThrusterVector(
-    entry,
-    x,
-    y
-)
-
-    local device =
-        entry.device
-
-
-    local ok =
-        pcall(
-            function()
-
-                device.setVector(
-                    x,
-                    y
-                )
-
-            end
-        )
-
-
-    return ok
-
-end
-
-
---------------------------------------------------
--- SET ALL THRUSTERS
---------------------------------------------------
-
-local function setAllVectors(
-    thrusters,
-    x,
-    y
-)
-
-    local successful =
-        0
-
-
-    for _, entry in ipairs(
-        thrusters
-    ) do
-
-        if setThrusterVector(
-            entry,
-            x,
-            y
-        ) then
-
-            successful =
-                successful + 1
-
-        end
-
-    end
-
-
-    return successful
-
-end
-
-
---------------------------------------------------
--- READ GIMBAL ANGLES
---------------------------------------------------
-
-local function readAngles(
-    sensor
-)
-
-    local ok,
-        values =
-        pcall(
-            function()
-
-                return
-                    sensor.getAnglesRad()
-
-            end
-        )
-
-
-    if not ok
-        or
-        type(values) ~= "table" then
-
-        return nil,
-            nil
-
-    end
-
-
-    local pitch =
-        tonumber(
-            values[1]
-        )
-        or
-        0
-
-
-    local roll =
-        tonumber(
-            values[2]
-        )
-        or
-        0
-
-
-    return pitch,
-        roll
-
-end
-
-
---------------------------------------------------
--- READ ANGULAR RATES
---------------------------------------------------
-
-local function readRates(
-    sensor
-)
-
-    local ok,
-        values =
-        pcall(
-            function()
-
-                return
-                    sensor.getAngularRatesRad()
-
-            end
-        )
-
-
-    if not ok
-        or
-        type(values) ~= "table" then
-
-        return nil,
-            nil,
-            nil
-
-    end
-
-
-    local rateX =
-        tonumber(
-            values[1]
-        )
-        or
-        0
-
-
-    local rateY =
-        tonumber(
-            values[2]
-        )
-        or
-        0
-
-
-    local rateZ =
-        tonumber(
-            values[3]
-        )
-        or
-        0
-
-
-    return rateX,
-        rateY,
-        rateZ
-
-end
-
-
---------------------------------------------------
--- DEGREES
---------------------------------------------------
-
-local function degrees(
-    radians
-)
-
-    return
-        radians *
-        180 /
-        math.pi
-
-end
-
-
---------------------------------------------------
--- SCREEN
---------------------------------------------------
-
-local function draw(
-    pitch,
-    yaw,
-    ratePitch,
-    rateYaw,
-    commandX,
-    commandY,
-    engines,
-    running
-)
-
-    term.clear()
-
-    term.setCursorPos(
-        1,
-        1
-    )
-
-
-    print(
-        "VERTICAL STABILIZATION TEST"
-    )
-
-
-    print(
-        "============================"
-    )
-
-
-    if running then
-
-        print(
-            "STATUS: RUNNING"
-        )
-
-    else
-
-        print(
-            "STATUS: STOPPED"
-        )
-
-    end
-
-
-    print(
-        ""
-    )
-
-
-    print(
-        string.format(
-            "PITCH %7.3f deg",
-            pitch
-        )
-    )
-
-
-    print(
-        string.format(
-            "YAW   %7.3f deg",
-            yaw
-        )
-    )
-
-
-    print(
-        ""
-    )
-
-
-    print(
-        string.format(
-            "PITCH RATE %7.3f deg/s",
-            ratePitch
-        )
-    )
-
-
-    print(
-        string.format(
-            "YAW RATE   %7.3f deg/s",
-            rateYaw
-        )
-    )
-
-
-    print(
-        ""
-    )
-
-
-    print(
-        string.format(
-            "CMD X %8.4f",
-            commandX
-        )
-    )
-
-
-    print(
-        string.format(
-            "CMD Y %8.4f",
-            commandY
-        )
-    )
-
-
-    print(
-        ""
-    )
-
-
-    print(
-        "ENGINES " ..
-        tostring(
-            engines
-        ) ..
-        "/4"
-    )
-
-
-    print(
-        ""
-    )
-
-
-    print(
-        "TARGET:"
-    )
-
-
-    print(
-        "PITCH 0.000 deg"
-    )
-
-
-    print(
-        "YAW   0.000 deg"
-    )
-
-
-    print(
-        ""
-    )
-
-
-    print(
-        "Q = STOP"
-    )
-
-end
-
-
---------------------------------------------------
--- MAIN
---------------------------------------------------
-
-local gimbalSensor,
-    gimbalName =
-    findFirstType(
-        "gimbal_sensor"
-    )
-
-
-local thrusters =
-    findThrusters()
-
-
---------------------------------------------------
--- CHECK HARDWARE
---------------------------------------------------
-
-if not gimbalSensor then
-
-    term.clear()
-
-    term.setCursorPos(
-        1,
-        1
-    )
-
-
-    print(
-        "ERROR: GIMBAL SENSOR NOT FOUND"
-    )
-
-
-    print(
-        ""
-    )
-
-
-    print(
-        "Required peripheral:"
-    )
-
-
-    print(
-        "gimbal_sensor"
-    )
-
-
+    print("ERROR: gimbal_sensor not found")
     return
 
 end
@@ -615,22 +124,56 @@ end
 
 if #thrusters == 0 then
 
-    term.clear()
-
-    term.setCursorPos(
-        1,
-        1
-    )
-
-
-    print(
-        "ERROR: VECTOR THRUSTERS NOT FOUND"
-    )
-
-
+    print("ERROR: liquid_vector_thruster not found")
     return
 
 end
+
+
+print(
+    "GIMBAL: " ..
+    tostring(gimbalName)
+)
+
+print(
+    "THRUSTERS: " ..
+    tostring(#thrusters)
+)
+
+print()
+print("Set engine thrust manually.")
+print("Recommended thrust: 0.2")
+print()
+print("Press any key to start.")
+
+os.pullEvent("key")
+
+
+--------------------------------------------------
+-- NEUTRAL
+--------------------------------------------------
+
+local function setVector(x, y)
+
+    for _, entry in ipairs(thrusters) do
+
+        pcall(
+            function()
+
+                entry.device.setVector(
+                    x,
+                    y
+                )
+
+            end
+        )
+
+    end
+
+end
+
+
+setVector(0, 0)
 
 
 --------------------------------------------------
@@ -638,117 +181,33 @@ end
 --------------------------------------------------
 
 term.clear()
+term.setCursorPos(1, 1)
 
-term.setCursorPos(
-    1,
-    1
-)
+print("VERTICAL STABILIZATION ACTIVE")
+print("==============================")
+print()
+print("Q = STOP")
+print()
 
+--------------------------------------------------
+-- TIMER
+--------------------------------------------------
 
-print(
-    "VERTICAL STABILIZATION TEST"
-)
-
-
-print(
-    "============================"
-)
-
-
-print(
-    ""
-)
-
-
-print(
-    "GIMBAL:"
-)
-
-
-print(
-    gimbalName
-)
-
-
-print(
-    ""
-)
-
-
-print(
-    "THRUSTERS FOUND: " ..
-    tostring(
-        #thrusters
+local timer =
+    os.startTimer(
+        UPDATE_INTERVAL
     )
-)
 
 
-print(
-    ""
-)
-
-
-print(
-    "Set engine thrust manually."
-)
-
-
-print(
-    "Recommended: 0.2 initially."
-)
-
-
-print(
-    ""
-)
-
-
-print(
-    "Press any key to START."
-)
-
-
-os.pullEvent(
-    "key"
-)
-
+local running = true
 
 --------------------------------------------------
--- STABILIZATION LOOP
+-- MAIN LOOP
 --------------------------------------------------
-
-local running =
-    true
-
-
-local commandX =
-    0
-
-
-local commandY =
-    0
-
-
-local lastPitch =
-    0
-
-
-local lastYaw =
-    0
-
-
-local started =
-    os.clock()
-
 
 while running do
 
-    --------------------------------------------------
-    -- INPUT CHECK
-    --------------------------------------------------
-
-    local event,
-        key =
+    local event, a =
         os.pullEventRaw()
 
 
@@ -756,315 +215,280 @@ while running do
     -- STOP
     --------------------------------------------------
 
-    if event ==
-        "key"
+    if event == "key"
         and
-        key ==
-        keys.q then
+        a == keys.q then
 
-        running =
-            false
-
-
-        break
-
-    end
+        running = false
 
 
     --------------------------------------------------
-    -- SENSOR
+    -- UPDATE
     --------------------------------------------------
 
-    local pitch,
-        roll =
-        readAngles(
-            gimbalSensor
-        )
-
-
-    local rateX,
-        rateY,
-        rateZ =
-        readRates(
-            gimbalSensor
-        )
-
-
-    if pitch == nil then
-
-        commandX =
-            0
-
-
-        commandY =
-            0
-
-
-        setAllVectors(
-            thrusters,
-            0,
-            0
-        )
-
-
-        draw(
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            #thrusters,
-            true
-        )
-
-
-        print(
-            ""
-        )
-
-
-        print(
-            "GIMBAL READ ERROR"
-        )
-
-
-        sleep(
-            0.2
-        )
-
-
-    else
+    elseif event == "timer"
+        and
+        a == timer then
 
         --------------------------------------------------
-        -- YAW
-        --
-        -- The current rocket normally starts with
-        -- yaw approximately zero.
-        --
-        -- We use gimbal rate Z for damping.
+        -- READ ANGLES
         --------------------------------------------------
 
-        local yaw =
-            0
+        local okAngles,
+            angles =
+            pcall(
+                function()
 
+                    return
+                        gimbal.getAnglesRad()
 
-        local yawRate =
-            rateZ
-            or
-            0
-
-
-        --------------------------------------------------
-        -- PITCH
-        --
-        -- getAnglesRad()[1]
-        -- getAngularRatesRad()[1]
-        --------------------------------------------------
-
-        local pitchRate =
-            rateX
-            or
-            0
-
-
-        --------------------------------------------------
-        -- DEADZONE
-        --------------------------------------------------
-
-        local effectiveYaw =
-            yaw
-
-
-        local effectivePitch =
-            pitch
-
-
-        if math.abs(
-            effectiveYaw
-        ) <
-        YAW_DEADZONE then
-
-            effectiveYaw =
-                0
-
-        end
-
-
-        if math.abs(
-            effectivePitch
-        ) <
-        PITCH_DEADZONE then
-
-            effectivePitch =
-                0
-
-        end
-
-
-        --------------------------------------------------
-        -- PITCH CONTROL
-        --------------------------------------------------
-
-        local pitchP =
-            PITCH_KP *
-            effectivePitch
-
-
-        local pitchD =
-            -PITCH_KD *
-            pitchRate
-
-
-        local pitchOutput =
-            pitchP +
-            pitchD
-
-
-        --------------------------------------------------
-        -- YAW CONTROL
-        --------------------------------------------------
-
-        local yawP =
-            YAW_KP *
-            effectiveYaw
-
-
-        local yawD =
-            -YAW_KD *
-            yawRate
-
-
-        local yawOutput =
-            yawP +
-            yawD
-
-
-        --------------------------------------------------
-        -- VERY HIGH RATE PROTECTION
-        --------------------------------------------------
-
-        if math.abs(
-            pitchRate
-        ) >
-        MAX_SAFE_RATE then
-
-            pitchOutput =
-                pitchOutput *
-                0.25
-
-        end
-
-
-        if math.abs(
-            yawRate
-        ) >
-        MAX_SAFE_RATE then
-
-            yawOutput =
-                yawOutput *
-                0.25
-
-        end
-
-
-        --------------------------------------------------
-        -- PHYSICAL SIGNS
-        --
-        -- These are intentionally explicit so they are
-        -- easy to reverse after the first test if the
-        -- rocket reacts in the opposite direction.
-        --------------------------------------------------
-
-        local desiredX =
-            -yawOutput
-
-
-        local desiredY =
-            -pitchOutput
-
-
-        --------------------------------------------------
-        -- LIMIT
-        --------------------------------------------------
-
-        desiredX =
-            clamp(
-                desiredX,
-                -MAX_VECTOR,
-                MAX_VECTOR
-            )
-
-
-        desiredY =
-            clamp(
-                desiredY,
-                -MAX_VECTOR,
-                MAX_VECTOR
+                end
             )
 
 
         --------------------------------------------------
-        -- COMMAND
+        -- READ RATES
         --------------------------------------------------
 
-        commandX =
-            desiredX
+        local okRates,
+            rates =
+            pcall(
+                function()
+
+                    return
+                        gimbal.getAngularRatesRad()
+
+                end
+            )
 
 
-        commandY =
-            desiredY
+        if okAngles
+            and
+            okRates
+            and
+            type(angles) == "table"
+            and
+            type(rates) == "table" then
+
+            --------------------------------------------------
+            -- SENSOR AXES
+            --
+            -- According to the current navigation setup:
+            --
+            -- angles[1] = pitch
+            -- angles[2] = roll
+            --
+            -- rates[1] = X
+            -- rates[2] = Y
+            -- rates[3] = Z
+            --------------------------------------------------
+
+            local pitch =
+                tonumber(
+                    angles[1]
+                )
+                or
+                0
 
 
-        --------------------------------------------------
-        -- APPLY
-        --------------------------------------------------
-
-        setAllVectors(
-            thrusters,
-            commandX,
-            commandY
-        )
+            local roll =
+                tonumber(
+                    angles[2]
+                )
+                or
+                0
 
 
-        --------------------------------------------------
-        -- DISPLAY
-        --
-        -- The local variable "yaw" is kept as zero in
-        -- this standalone test because the current
-        -- gimbal API does not expose a separate heading
-        -- angle here.
-        --
-        -- rateZ is still used for damping.
-        --------------------------------------------------
+            local pitchRate =
+                tonumber(
+                    rates[1]
+                )
+                or
+                0
 
-        draw(
-            degrees(
+
+            local rollRate =
+                tonumber(
+                    rates[2]
+                )
+                or
+                0
+
+
+            local yawRate =
+                tonumber(
+                    rates[3]
+                )
+                or
+                0
+
+
+            --------------------------------------------------
+            -- PITCH STABILIZATION
+            --------------------------------------------------
+
+            local pitchP =
+                PITCH_KP *
                 pitch
-            ),
-            0,
-            degrees(
+
+
+            local pitchD =
+                -PITCH_KD *
                 pitchRate
-            ),
-            degrees(
+
+
+            local pitchOutput =
+                pitchP +
+                pitchD
+
+
+            --------------------------------------------------
+            -- YAW RATE DAMPING
+            --
+            -- We don't have a reliable absolute yaw angle
+            -- in this test, so yaw uses rate damping only.
+            --------------------------------------------------
+
+            local yawOutput =
+                -YAW_KD *
                 yawRate
-            ),
-            commandX,
-            commandY,
-            #thrusters,
-            true
-        )
+
+
+            --------------------------------------------------
+            -- COMMAND
+            --------------------------------------------------
+
+            local commandX =
+                clamp(
+                    -yawOutput,
+                    -MAX_VECTOR,
+                    MAX_VECTOR
+                )
+
+
+            local commandY =
+                clamp(
+                    -pitchOutput,
+                    -MAX_VECTOR,
+                    MAX_VECTOR
+                )
+
+
+            --------------------------------------------------
+            -- SEND TO ALL THRUSTERS
+            --------------------------------------------------
+
+            setVector(
+                commandX,
+                commandY
+            )
+
+
+            --------------------------------------------------
+            -- DISPLAY
+            --------------------------------------------------
+
+            term.clear()
+            term.setCursorPos(1, 1)
+
+            print(
+                "VERTICAL STABILIZATION"
+            )
+
+            print(
+                "======================="
+            )
+
+            print()
+
+            print(
+                string.format(
+                    "PITCH %8.3f deg",
+                    degrees(pitch)
+                )
+            )
+
+            print(
+                string.format(
+                    "ROLL  %8.3f deg",
+                    degrees(roll)
+                )
+            )
+
+            print()
+
+            print(
+                string.format(
+                    "PITCH RATE %8.3f deg/s",
+                    degrees(pitchRate)
+                )
+            )
+
+            print(
+                string.format(
+                    "ROLL RATE  %8.3f deg/s",
+                    degrees(rollRate)
+                )
+            )
+
+            print(
+                string.format(
+                    "YAW RATE   %8.3f deg/s",
+                    degrees(yawRate)
+                )
+            )
+
+            print()
+
+            print(
+                string.format(
+                    "CMD X %8.4f",
+                    commandX
+                )
+            )
+
+            print(
+                string.format(
+                    "CMD Y %8.4f",
+                    commandY
+                )
+            )
+
+            print()
+
+            print(
+                "ENGINES: " ..
+                tostring(#thrusters)
+            )
+
+            print()
+
+            print("Q = STOP")
+
+        else
+
+            setVector(0, 0)
+
+            term.clear()
+            term.setCursorPos(1, 1)
+
+            print(
+                "GIMBAL SENSOR READ ERROR"
+            )
+
+        end
+
+
+        --------------------------------------------------
+        -- NEXT UPDATE
+        --------------------------------------------------
+
+        timer =
+            os.startTimer(
+                UPDATE_INTERVAL
+            )
 
     end
-
-
-    --------------------------------------------------
-    -- LOOP RATE
-    --------------------------------------------------
-
-    sleep(
-        UPDATE_INTERVAL
-    )
 
 end
 
@@ -1073,46 +497,17 @@ end
 -- SAFE STOP
 --------------------------------------------------
 
-setAllVectors(
-    thrusters,
-    0,
-    0
-)
+setVector(0, 0)
 
 
 term.clear()
-
-term.setCursorPos(
-    1,
-    1
-)
-
+term.setCursorPos(1, 1)
 
 print(
-    "VERTICAL STABILIZATION TEST"
+    "STABILIZATION TEST STOPPED"
 )
 
-
-print(
-    "============================"
-)
-
-
-print(
-    ""
-)
-
-
-print(
-    "TEST STOPPED"
-)
-
-
-print(
-    ""
-)
-
-
+print()
 print(
     "All nozzles returned to 0 / 0."
 )
