@@ -1,103 +1,79 @@
 -- Missile Guidance System
 -- CC:Tweaked
 --
--- STABILIZED FLIGHT VERSION
+-- STABILIZED CONTROL VERSION
 --
--- Current rocket geometry:
+-- Current physical thruster mapping:
 --
---   commandX -> yaw
---   commandY -> pitch
+--   commandX -> yaw control axis
+--   commandY -> pitch control axis
 --
--- Current calibrated rate mapping:
+-- Control sign:
+--   negative controller output is sent to the
+--   corresponding positive physical correction.
 --
---   yawRate   -> navigation.angularRateZ
---   pitchRate -> navigation.angularRateX
+-- Therefore:
 --
--- This version:
---   * disables integral control
---   * uses stronger rate damping
---   * uses larger phase limits
---   * reduces authority when angular rate becomes large
---   * keeps BOOST vector at zero
+--   commandX = -(yaw controller)
+--   commandY = -(pitch controller)
 --
--- Goal:
---   allow useful steering while preventing runaway rotation.
+-- Integral control is disabled.
+--
+-- The controller also reduces authority when the
+-- rocket is already rotating rapidly.
 
 --------------------------------------------------
 -- UPDATE
 --------------------------------------------------
 
-local UPDATE_INTERVAL =
-    0.05
+local UPDATE_INTERVAL = 0.05
 
 
 --------------------------------------------------
 -- START
 --------------------------------------------------
 
-local START_NEUTRAL_TIME =
-    1.5
+local START_NEUTRAL_TIME = 1.5
 
-
-local START_RAMP_TIME =
-    3.0
+local START_RAMP_TIME = 3.0
 
 
 --------------------------------------------------
--- VECTOR LIMITS
---
--- These are the limits we actually want.
--- flight.lua is also updated to publish the same values.
+-- PHASE LIMITS
 --------------------------------------------------
 
-local BOOST_VECTOR =
-    0.0
+local BOOST_LIMIT = 0.000
 
+local PITCH_OVER_LIMIT = 0.050
 
-local PITCH_OVER_VECTOR =
-    0.050
+local CRUISE_LIMIT = 0.100
 
-
-local CRUISE_VECTOR =
-    0.100
-
-
-local TERMINAL_VECTOR =
-    0.250
+local TERMINAL_LIMIT = 0.250
 
 
 --------------------------------------------------
 -- PID
 --------------------------------------------------
 
-local YAW_KP =
-    0.025
+local YAW_KP = 0.025
+
+local PITCH_KP = 0.030
 
 
-local PITCH_KP =
-    0.030
+local YAW_KD = 0.090
 
-
-local YAW_KD =
-    0.065
-
-
-local PITCH_KD =
-    0.075
+local PITCH_KD = 0.100
 
 
 --------------------------------------------------
 -- INTEGRAL
 --
--- Disabled during stabilization testing.
+-- Disabled while stabilizing the system.
 --------------------------------------------------
 
-local YAW_KI =
-    0.0
+local YAW_KI = 0.0
 
-
-local PITCH_KI =
-    0.0
+local PITCH_KI = 0.0
 
 
 --------------------------------------------------
@@ -115,26 +91,25 @@ local PITCH_DEADZONE =
 --------------------------------------------------
 -- RATE PROTECTION
 --
--- Above these angular rates the controller
--- progressively reduces steering authority.
---
--- Rates are radians/sec.
+-- These limits are intentionally much lower than
+-- the extreme angular rates seen during the failed
+-- flight.
 --------------------------------------------------
 
-local YAW_RATE_SOFT_LIMIT =
-    math.rad(2.0)
+local YAW_RATE_SOFT =
+    math.rad(1.5)
 
 
-local YAW_RATE_HARD_LIMIT =
-    math.rad(8.0)
+local YAW_RATE_HARD =
+    math.rad(4.0)
 
 
-local PITCH_RATE_SOFT_LIMIT =
-    math.rad(2.0)
+local PITCH_RATE_SOFT =
+    math.rad(1.5)
 
 
-local PITCH_RATE_HARD_LIMIT =
-    math.rad(8.0)
+local PITCH_RATE_HARD =
+    math.rad(4.0)
 
 
 --------------------------------------------------
@@ -142,7 +117,7 @@ local PITCH_RATE_HARD_LIMIT =
 --------------------------------------------------
 
 local MAX_COMMAND_STEP =
-    0.0015
+    0.0010
 
 
 --------------------------------------------------
@@ -154,7 +129,7 @@ local ARRIVAL_DISTANCE =
 
 
 --------------------------------------------------
--- HELPERS
+-- CLAMP
 --------------------------------------------------
 
 local function clamp(
@@ -288,10 +263,6 @@ local function rateAuthority(
         )
 
 
-    --------------------------------------------------
-    -- Normal control
-    --------------------------------------------------
-
     if magnitude <=
         softLimit then
 
@@ -300,11 +271,6 @@ local function rateAuthority(
     end
 
 
-    --------------------------------------------------
-    -- Above hard limit:
-    -- no new steering authority
-    --------------------------------------------------
-
     if magnitude >=
         hardLimit then
 
@@ -312,10 +278,6 @@ local function rateAuthority(
 
     end
 
-
-    --------------------------------------------------
-    -- Linear reduction
-    --------------------------------------------------
 
     return
         1.0 -
@@ -335,7 +297,7 @@ end
 
 
 --------------------------------------------------
--- RESET
+-- RESET OUTPUT
 --------------------------------------------------
 
 local function resetOutput(
@@ -398,50 +360,68 @@ local function run(
     --------------------------------------------------
 
     g.online = true
+
     g.status = "ONLINE"
+
     g.active = false
 
     g.commandX = 0
+
     g.commandY = 0
 
     g.yawError = 0
+
     g.pitchError = 0
 
     g.yawRate = 0
+
     g.pitchRate = 0
 
     g.yawP = 0
+
     g.yawI = 0
+
     g.yawD = 0
 
     g.pitchP = 0
+
     g.pitchI = 0
+
     g.pitchD = 0
 
     g.yawIntegral = 0
+
     g.pitchIntegral = 0
 
     g.targetDX = 0
+
     g.targetDY = 0
+
     g.targetDZ = 0
 
     g.distance = 0
 
     g.flightPhase = "READY"
+
     g.flightTime = 0
+
     g.phaseTime = 0
+
     g.flightMaxVector = 0
 
     g.rateAuthorityYaw = 1
+
     g.rateAuthorityPitch = 1
 
 
     --------------------------------------------------
-    -- INTERNAL
+    -- INTERNAL OUTPUT
     --------------------------------------------------
 
     local currentCommandX = 0
+
     local currentCommandY = 0
+
 
     local previousTime =
         os.clock()
@@ -508,14 +488,6 @@ local function run(
 
 
             g.distance =
-                0
-
-
-            g.yawError =
-                0
-
-
-            g.pitchError =
                 0
 
 
@@ -623,7 +595,7 @@ local function run(
 
 
         --------------------------------------------------
-        -- TELEMETRY
+        -- SAVE TARGET
         --------------------------------------------------
 
         g.targetDX =
@@ -663,7 +635,7 @@ local function run(
 
 
         --------------------------------------------------
-        -- FLIGHT
+        -- FLIGHT DATA
         --------------------------------------------------
 
         local flight =
@@ -722,7 +694,7 @@ local function run(
 
 
         --------------------------------------------------
-        -- TARGET REACHED
+        -- IMPACT
         --------------------------------------------------
 
         if distance <=
@@ -759,7 +731,7 @@ local function run(
 
 
         --------------------------------------------------
-        -- FORWARD
+        -- FORWARD VECTOR
         --------------------------------------------------
 
         local forward =
@@ -826,7 +798,7 @@ local function run(
 
 
         --------------------------------------------------
-        -- NORMALIZE
+        -- NORMALIZE FORWARD
         --------------------------------------------------
 
         fx =
@@ -843,6 +815,10 @@ local function run(
             fz /
             forwardLength
 
+
+        --------------------------------------------------
+        -- NORMALIZE TARGET
+        --------------------------------------------------
 
         local targetLength =
             math.max(
@@ -867,7 +843,7 @@ local function run(
 
 
         --------------------------------------------------
-        -- HORIZONTAL COMPONENTS
+        -- HORIZONTAL VECTORS
         --------------------------------------------------
 
         local forwardHorizontal =
@@ -946,7 +922,7 @@ local function run(
 
 
         --------------------------------------------------
-        -- PITCH
+        -- PITCH ERROR
         --------------------------------------------------
 
         local currentPitch =
@@ -971,7 +947,7 @@ local function run(
 
 
         --------------------------------------------------
-        -- SAVE ERROR
+        -- SAVE ERRORS
         --------------------------------------------------
 
         g.yawError =
@@ -983,12 +959,20 @@ local function run(
 
 
         --------------------------------------------------
-        -- ANGULAR RATES
+        -- ANGULAR RATE MAPPING
         --
-        -- Calibrated mapping:
+        -- Current calibration:
         --
-        -- X vector -> mainly Z rate
-        -- Y vector -> mainly X rate
+        --   Y vector gave the strongest pitch-like
+        --   reaction on Gimbal X.
+        --
+        --   X vector produced the strongest horizontal
+        --   rotation response on the other axis.
+        --
+        -- Current controller uses:
+        --
+        --   yawRate   = angularRateZ
+        --   pitchRate = angularRateX
         --------------------------------------------------
 
         local yawRate =
@@ -1022,16 +1006,16 @@ local function run(
         local yawAuthority =
             rateAuthority(
                 yawRate,
-                YAW_RATE_SOFT_LIMIT,
-                YAW_RATE_HARD_LIMIT
+                YAW_RATE_SOFT,
+                YAW_RATE_HARD
             )
 
 
         local pitchAuthority =
             rateAuthority(
                 pitchRate,
-                PITCH_RATE_SOFT_LIMIT,
-                PITCH_RATE_HARD_LIMIT
+                PITCH_RATE_SOFT,
+                PITCH_RATE_HARD
             )
 
 
@@ -1045,9 +1029,6 @@ local function run(
 
         --------------------------------------------------
         -- PHASE LIMIT
-        --
-        -- Flight module publishes the official value.
-        -- We also protect it locally.
         --------------------------------------------------
 
         local phaseLimit =
@@ -1064,7 +1045,7 @@ local function run(
             phaseLimit =
                 math.min(
                     phaseLimit,
-                    BOOST_VECTOR
+                    BOOST_LIMIT
                 )
 
 
@@ -1074,7 +1055,7 @@ local function run(
             phaseLimit =
                 math.min(
                     phaseLimit,
-                    PITCH_OVER_VECTOR
+                    PITCH_OVER_LIMIT
                 )
 
 
@@ -1084,7 +1065,7 @@ local function run(
             phaseLimit =
                 math.min(
                     phaseLimit,
-                    CRUISE_VECTOR
+                    CRUISE_LIMIT
                 )
 
 
@@ -1094,7 +1075,7 @@ local function run(
             phaseLimit =
                 math.min(
                     phaseLimit,
-                    TERMINAL_VECTOR
+                    TERMINAL_LIMIT
                 )
 
 
@@ -1108,33 +1089,6 @@ local function run(
 
         g.flightMaxVector =
             phaseLimit
-
-
-        --------------------------------------------------
-        -- TIME
-        --------------------------------------------------
-
-        local now =
-            os.clock()
-
-
-        local dt =
-            now -
-            previousTime
-
-
-        previousTime =
-            now
-
-
-        if dt <= 0
-            or
-            dt > 0.5 then
-
-            dt =
-                UPDATE_INTERVAL
-
-        end
 
 
         --------------------------------------------------
@@ -1204,6 +1158,33 @@ local function run(
 
 
         --------------------------------------------------
+        -- DELTA TIME
+        --------------------------------------------------
+
+        local now =
+            os.clock()
+
+
+        local dt =
+            now -
+            previousTime
+
+
+        previousTime =
+            now
+
+
+        if dt <= 0
+            or
+            dt > 0.5 then
+
+            dt =
+                UPDATE_INTERVAL
+
+        end
+
+
+        --------------------------------------------------
         -- PITCH OVER RAMP
         --------------------------------------------------
 
@@ -1234,21 +1215,57 @@ local function run(
 
 
         --------------------------------------------------
-        -- PID PROPORTIONAL
+        -- ERROR DEADZONES
+        --------------------------------------------------
+
+        local effectiveYawError =
+            yawError
+
+
+        local effectivePitchError =
+            pitchError
+
+
+        if math.abs(
+            effectiveYawError
+        ) <=
+        YAW_DEADZONE then
+
+            effectiveYawError =
+                0
+
+        end
+
+
+        if math.abs(
+            effectivePitchError
+        ) <=
+        PITCH_DEADZONE then
+
+            effectivePitchError =
+                0
+
+        end
+
+
+        --------------------------------------------------
+        -- P
         --------------------------------------------------
 
         local yawP =
             YAW_KP *
-            yawError
+            effectiveYawError
 
 
         local pitchP =
             PITCH_KP *
-            pitchError
+            effectivePitchError
 
 
         --------------------------------------------------
-        -- INTEGRAL DISABLED
+        -- I
+        --
+        -- Intentionally disabled.
         --------------------------------------------------
 
         local yawI =
@@ -1260,21 +1277,21 @@ local function run(
 
 
         --------------------------------------------------
-        -- RATE DAMPING
+        -- D
         --------------------------------------------------
 
         local yawD =
-            -YAW_KD *
+            YAW_KD *
             yawRate
 
 
         local pitchD =
-            -PITCH_KD *
+            PITCH_KD *
             pitchRate
 
 
         --------------------------------------------------
-        -- STORE COMPONENTS
+        -- STORE
         --------------------------------------------------
 
         g.yawP =
@@ -1301,56 +1318,41 @@ local function run(
             pitchD
 
 
-        g.yawIntegral =
-            0
-
-
-        g.pitchIntegral =
-            0
-
-
         --------------------------------------------------
-        -- TOTAL
+        -- CONTROLLER
+        --
+        -- The entire controller is inverted to match
+        -- the physical thruster response found during
+        -- bench testing.
         --------------------------------------------------
 
-        local yawCommand =
+        local yawController =
             yawP +
             yawD
 
 
-        local pitchCommand =
+        local pitchController =
             pitchP +
             pitchD
 
 
         --------------------------------------------------
-        -- DEADZONE
+        -- PHYSICAL COMMAND
+        --
+        -- X = yaw
+        -- Y = pitch
         --------------------------------------------------
 
-        if math.abs(yawError) <=
-            YAW_DEADZONE then
-
-            yawCommand =
-                yawD
-
-        end
+        local yawCommand =
+            -yawController
 
 
-        if math.abs(pitchError) <=
-            PITCH_DEADZONE then
-
-            pitchCommand =
-                pitchD
-
-        end
+        local pitchCommand =
+            -pitchController
 
 
         --------------------------------------------------
         -- RATE PROTECTION
-        --
-        -- Do not allow a controller to continue
-        -- commanding aggressively while the rocket
-        -- is already rotating rapidly.
         --------------------------------------------------
 
         yawCommand =
@@ -1364,7 +1366,7 @@ local function run(
 
 
         --------------------------------------------------
-        -- PHASE SCALE
+        -- PITCH OVER RAMP
         --------------------------------------------------
 
         yawCommand =
@@ -1398,10 +1400,7 @@ local function run(
 
 
         --------------------------------------------------
-        -- OUTPUT
-        --
-        -- X = YAW
-        -- Y = PITCH
+        -- OUTPUT MAPPING
         --------------------------------------------------
 
         local requestedX =
@@ -1433,7 +1432,7 @@ local function run(
 
 
         --------------------------------------------------
-        -- OUTPUT
+        -- FINAL OUTPUT
         --------------------------------------------------
 
         g.commandX =
