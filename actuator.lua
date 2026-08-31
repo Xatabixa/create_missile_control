@@ -1,29 +1,34 @@
 -- Missile Control System
--- Multi-engine actuator controller
+-- Multi-engine vector actuator
 --
--- Detects vector thrusters by their API.
+-- ACTUATOR VERSION 2
 --
--- IMPORTANT:
--- Guidance produces a REQUESTED vector.
--- Actuator applies a phase-dependent SAFE vector.
+-- Responsibilities:
+--   * detect liquid/vector thrusters
+--   * receive Guidance commandX / commandY
+--   * apply phase safety limits
+--   * send exactly the resulting X/Y vector
+--   * report requested/applied/actual vector
 --
--- BOOST:
---   requested vector may be non-zero
---   applied vector is forced to ZERO
+-- Coordinate handling is NOT performed here.
 --
--- PITCH OVER / CRUISE / TERMINAL:
---   requested vector is limited by flightMaxVector
+-- Guidance:
+--   commandX = yaw
+--   commandY = pitch
 --
--- All detected vector thrusters receive the same
--- final applied vector.
+-- Actuator:
+--   sends X/Y unchanged.
 
 --------------------------------------------------
 -- SETTINGS
 --------------------------------------------------
 
-local UPDATE_INTERVAL = 0.05
+local UPDATE_INTERVAL =
+    0.05
 
-local MAX_VECTOR = 1.0
+
+local MAX_VECTOR =
+    1.0
 
 
 --------------------------------------------------
@@ -31,24 +36,24 @@ local MAX_VECTOR = 1.0
 --------------------------------------------------
 
 local function clamp(
-    value
+    value,
+    minimum,
+    maximum
 )
 
     value =
-        tonumber(value) or 0
+        tonumber(value)
+        or
+        0
 
 
-    if value > MAX_VECTOR then
-
-        return MAX_VECTOR
-
+    if value < minimum then
+        return minimum
     end
 
 
-    if value < -MAX_VECTOR then
-
-        return -MAX_VECTOR
-
+    if value > maximum then
+        return maximum
     end
 
 
@@ -58,7 +63,7 @@ end
 
 
 --------------------------------------------------
--- CHECK VECTOR THRUSTER
+-- CHECK THRUSTER
 --------------------------------------------------
 
 local function isVectorThruster(
@@ -71,7 +76,8 @@ local function isVectorThruster(
         )
 
 
-    if type(methods) ~= "table" then
+    if type(methods) ~=
+        "table" then
 
         return false
 
@@ -82,11 +88,11 @@ local function isVectorThruster(
         false
 
 
-    local hasVectorX =
+    local hasX =
         false
 
 
-    local hasVectorY =
+    local hasY =
         false
 
 
@@ -104,14 +110,14 @@ local function isVectorThruster(
         elseif method ==
             "setVectorX" then
 
-            hasVectorX =
+            hasX =
                 true
 
 
         elseif method ==
             "setVectorY" then
 
-            hasVectorY =
+            hasY =
                 true
 
         end
@@ -123,16 +129,16 @@ local function isVectorThruster(
         hasSetVector
         or
         (
-            hasVectorX
+            hasX
             and
-            hasVectorY
+            hasY
         )
 
 end
 
 
 --------------------------------------------------
--- FIND ALL VECTOR THRUSTERS
+-- FIND THRUSTERS
 --------------------------------------------------
 
 local function findThrusters()
@@ -160,8 +166,12 @@ local function findThrusters()
                 table.insert(
                     result,
                     {
-                        name = name,
-                        device = device,
+                        name =
+                            name,
+
+                        device =
+                            device,
+
                         type =
                             peripheral.getType(
                                 name
@@ -182,41 +192,6 @@ end
 
 
 --------------------------------------------------
--- UPDATE ENGINE LIST
---------------------------------------------------
-
-local function updateEngineList(
-    state,
-    thrusters
-)
-
-    state.thruster.engineCount =
-        #thrusters
-
-
-    state.thruster.engines =
-        {}
-
-
-    for index, entry in ipairs(
-        thrusters
-    ) do
-
-        state.thruster.engines[index] =
-            {
-                name =
-                    entry.name,
-
-                type =
-                    entry.type
-            }
-
-    end
-
-end
-
-
---------------------------------------------------
 -- CALL VECTOR
 --------------------------------------------------
 
@@ -231,7 +206,7 @@ local function callVector(
         not entry.device then
 
         return false,
-            "DEVICE INVALID"
+            "INVALID DEVICE"
 
     end
 
@@ -246,20 +221,16 @@ local function callVector(
         false
 
 
-    local hasAxisMethods =
+    local hasX =
+        false
+
+
+    local hasY =
         false
 
 
     if type(methods) ==
         "table" then
-
-        local hasX =
-            false
-
-
-        local hasY =
-            false
-
 
         for _, method in ipairs(
             methods
@@ -289,15 +260,11 @@ local function callVector(
 
         end
 
-
-        hasAxisMethods =
-            hasX and hasY
-
     end
 
 
     --------------------------------------------------
-    -- setVector(x, y)
+    -- PREFERRED API
     --------------------------------------------------
 
     if hasSetVector then
@@ -333,10 +300,12 @@ local function callVector(
 
 
     --------------------------------------------------
-    -- setVectorX / setVectorY
+    -- FALLBACK API
     --------------------------------------------------
 
-    if hasAxisMethods then
+    if hasX
+        and
+        hasY then
 
         local ok,
             err =
@@ -346,7 +315,6 @@ local function callVector(
                     entry.device.setVectorX(
                         x
                     )
-
 
                     entry.device.setVectorY(
                         y
@@ -379,7 +347,7 @@ end
 
 
 --------------------------------------------------
--- NEUTRALIZE ALL
+-- SET NEUTRAL
 --------------------------------------------------
 
 local function setNeutral(
@@ -387,57 +355,26 @@ local function setNeutral(
     thrusters
 )
 
-    local successful =
-        0
-
-
-    local errors =
-        {}
-
-
     for _, entry in ipairs(
         thrusters
     ) do
 
-        local ok,
-            err =
-            callVector(
-                entry,
-                0,
-                0
-            )
-
-
-        if ok then
-
-            successful =
-                successful + 1
-
-        else
-
-            errors[
-                entry.name
-            ] =
-                err
-                or
-                "UNKNOWN ERROR"
-
-        end
+        callVector(
+            entry,
+            0,
+            0
+        )
 
     end
 
 
-    state.thruster.commandedEngines =
-        successful
+    state.thruster.requestedVectorX =
+        0
 
 
-    state.thruster.commandErrors =
-        errors
+    state.thruster.requestedVectorY =
+        0
 
-
-    --------------------------------------------------
-    -- Applied vector
-    --------------------------------------------------
 
     state.thruster.appliedVectorX =
         0
@@ -458,7 +395,7 @@ end
 
 
 --------------------------------------------------
--- GET PHASE
+-- PHASE
 --------------------------------------------------
 
 local function getPhase(
@@ -492,7 +429,7 @@ local function applyCommand(
 )
 
     --------------------------------------------------
-    -- NO ENGINES
+    -- NO THRUSTERS
     --------------------------------------------------
 
     if #thrusters == 0 then
@@ -500,18 +437,14 @@ local function applyCommand(
         state.thruster.commandedEngines =
             0
 
-
         state.thruster.status =
             "NO ENGINES"
-
 
         state.thruster.appliedVectorX =
             0
 
-
         state.thruster.appliedVectorY =
             0
-
 
         return
 
@@ -534,13 +467,17 @@ local function applyCommand(
             "CONTROL OFF"
 
 
+        state.thruster.commandedEngines =
+            0
+
+
         return
 
     end
 
 
     --------------------------------------------------
-    -- GUIDANCE CHECK
+    -- GUIDANCE
     --------------------------------------------------
 
     if type(
@@ -563,24 +500,24 @@ local function applyCommand(
 
 
     --------------------------------------------------
-    -- REQUESTED COMMAND
+    -- REQUESTED VECTOR
     --------------------------------------------------
 
     local requestedX =
         clamp(
-            state.guidance.commandX
+            state.guidance.commandX,
+            -MAX_VECTOR,
+            MAX_VECTOR
         )
 
 
     local requestedY =
         clamp(
-            state.guidance.commandY
+            state.guidance.commandY,
+            -MAX_VECTOR,
+            MAX_VECTOR
         )
 
-
-    --------------------------------------------------
-    -- SAVE REQUESTED COMMAND
-    --------------------------------------------------
 
     state.thruster.requestedVectorX =
         requestedX
@@ -591,7 +528,7 @@ local function applyCommand(
 
 
     --------------------------------------------------
-    -- PHASE SAFETY
+    -- PHASE
     --------------------------------------------------
 
     local phase =
@@ -610,8 +547,6 @@ local function applyCommand(
 
     --------------------------------------------------
     -- BOOST
-    --
-    -- No vector steering during initial boost.
     --------------------------------------------------
 
     if phase ==
@@ -620,14 +555,13 @@ local function applyCommand(
         appliedX =
             0
 
-
         appliedY =
             0
 
     else
 
         --------------------------------------------------
-        -- FLIGHT LIMIT
+        -- GUIDANCE LIMIT
         --------------------------------------------------
 
         local limit =
@@ -644,29 +578,20 @@ local function applyCommand(
                 )
 
 
-            if limit <
-                MAX_VECTOR then
-
-                appliedX =
-                    math.max(
-                        -limit,
-                        math.min(
-                            appliedX,
-                            limit
-                        )
-                    )
+            appliedX =
+                clamp(
+                    appliedX,
+                    -limit,
+                    limit
+                )
 
 
-                appliedY =
-                    math.max(
-                        -limit,
-                        math.min(
-                            appliedY,
-                            limit
-                        )
-                    )
-
-            end
+            appliedY =
+                clamp(
+                    appliedY,
+                    -limit,
+                    limit
+                )
 
         end
 
@@ -674,7 +599,7 @@ local function applyCommand(
 
 
     --------------------------------------------------
-    -- SAVE APPLIED VECTOR
+    -- SAVE APPLIED
     --------------------------------------------------
 
     state.thruster.appliedVectorX =
@@ -686,8 +611,10 @@ local function applyCommand(
 
 
     --------------------------------------------------
-    -- COMPATIBILITY:
-    -- targetVector = ACTUAL vector sent
+    -- TARGET VECTOR
+    --
+    -- This is the vector we actually ask the engines
+    -- to reach.
     --------------------------------------------------
 
     state.thruster.targetVectorX =
@@ -699,7 +626,7 @@ local function applyCommand(
 
 
     --------------------------------------------------
-    -- SEND TO ALL ENGINES
+    -- SEND
     --------------------------------------------------
 
     local successful =
@@ -743,7 +670,7 @@ local function applyCommand(
 
 
     --------------------------------------------------
-    -- SAVE RESULT
+    -- SAVE
     --------------------------------------------------
 
     state.thruster.commandedEngines =
@@ -807,6 +734,12 @@ local function updateTelemetry(
     end
 
 
+    --------------------------------------------------
+    -- USE FIRST THRUSTER
+    --
+    -- All engines receive the same requested vector.
+    --------------------------------------------------
+
     local entry =
         thrusters[1]
 
@@ -816,7 +749,7 @@ local function updateTelemetry(
 
 
     --------------------------------------------------
-    -- CURRENT VECTOR X
+    -- CURRENT X
     --------------------------------------------------
 
     local ok,
@@ -838,11 +771,16 @@ local function updateTelemetry(
             or
             0
 
+    else
+
+        state.thruster.vectorX =
+            0
+
     end
 
 
     --------------------------------------------------
-    -- CURRENT VECTOR Y
+    -- CURRENT Y
     --------------------------------------------------
 
     ok,
@@ -864,11 +802,16 @@ local function updateTelemetry(
             or
             0
 
+    else
+
+        state.thruster.vectorY =
+            0
+
     end
 
 
     --------------------------------------------------
-    -- TARGET VECTOR X
+    -- TARGET X
     --------------------------------------------------
 
     ok,
@@ -894,7 +837,7 @@ local function updateTelemetry(
 
 
     --------------------------------------------------
-    -- TARGET VECTOR Y
+    -- TARGET Y
     --------------------------------------------------
 
     ok,
@@ -981,10 +924,6 @@ local function run(
     state
 )
 
-    --------------------------------------------------
-    -- STATE
-    --------------------------------------------------
-
     state.thruster =
         state.thruster
         or
@@ -994,84 +933,81 @@ local function run(
     state.thruster.online =
         false
 
-
     state.thruster.status =
         "SCANNING"
-
 
     state.thruster.engineCount =
         0
 
-
     state.thruster.commandedEngines =
         0
-
 
     state.thruster.engines =
         {}
 
-
     state.thruster.commandErrors =
         {}
-
 
     state.thruster.vectorX =
         0
 
-
     state.thruster.vectorY =
         0
-
 
     state.thruster.requestedVectorX =
         0
 
-
     state.thruster.requestedVectorY =
         0
-
 
     state.thruster.appliedVectorX =
         0
 
-
     state.thruster.appliedVectorY =
         0
 
-
     state.thruster.targetVectorX =
         0
-
 
     state.thruster.targetVectorY =
         0
 
 
     --------------------------------------------------
-    -- MAIN LOOP
+    -- LOOP
     --------------------------------------------------
 
     while state.system
         and
         state.system.running do
 
-        --------------------------------------------------
-        -- SCAN
-        --------------------------------------------------
-
         local thrusters =
             findThrusters()
 
 
-        updateEngineList(
-            state,
+        state.thruster.engineCount =
+            #thrusters
+
+
+        state.thruster.engines =
+            {}
+
+
+        for index, entry in ipairs(
             thrusters
-        )
+        ) do
 
+            state.thruster.engines[index] =
+                {
+                    name =
+                        entry.name,
 
-        --------------------------------------------------
-        -- ONLINE
-        --------------------------------------------------
+                    type =
+                        entry.type
+                }
+
+        end
+
 
         if #thrusters > 0 then
 
@@ -1087,7 +1023,7 @@ local function run(
 
 
         --------------------------------------------------
-        -- COMMAND
+        -- APPLY COMMAND
         --------------------------------------------------
 
         applyCommand(
@@ -1114,12 +1050,8 @@ local function run(
 
 
     --------------------------------------------------
-    -- SAFETY SHUTDOWN
+    -- SHUTDOWN
     --------------------------------------------------
-
-    state.system.controlEnabled =
-        false
-
 
     local thrusters =
         findThrusters()
