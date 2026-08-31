@@ -9,6 +9,7 @@
 --   target.lua
 --   flight.lua
 --   display.lua
+--   telemetry_logger.lua
 --
 -- No require() is used.
 
@@ -194,10 +195,94 @@ local display =
         "display.lua"
     )
 
-local telemetry =
-    loadModule(
+
+--------------------------------------------------
+-- TELEMETRY LOGGER
+--
+-- This module is optional.
+--
+-- If telemetry_logger.lua exists and loads
+-- successfully, it will run alongside the
+-- missile-control system.
+--
+-- If the file does not exist, the main system
+-- still starts normally.
+--------------------------------------------------
+
+local telemetry = nil
+
+do
+
+    if fs.exists(
         "telemetry_logger.lua"
-    )
+    ) then
+
+        local telemetryChunk,
+        telemetryError =
+            loadfile(
+                "telemetry_logger.lua"
+            )
+
+
+        if not telemetryChunk then
+
+            error(
+                "LOAD ERROR telemetry_logger.lua: " ..
+                tostring(
+                    telemetryError
+                )
+            )
+
+        end
+
+
+        local telemetryOK,
+        telemetryModule =
+            pcall(
+                telemetryChunk
+            )
+
+
+        if not telemetryOK then
+
+            error(
+                "MODULE ERROR telemetry_logger.lua: " ..
+                tostring(
+                    telemetryModule
+                )
+            )
+
+        end
+
+
+        if type(
+            telemetryModule
+        ) ~= "table" then
+
+            error(
+                "INVALID MODULE telemetry_logger.lua"
+            )
+
+        end
+
+
+        if type(
+            telemetryModule.run
+        ) ~= "function" then
+
+            error(
+                "NO RUN FUNCTION telemetry_logger.lua"
+            )
+
+        end
+
+
+        telemetry =
+            telemetryModule
+
+    end
+
+end
 
 
 --------------------------------------------------
@@ -231,6 +316,23 @@ print("ACTUATOR ......... OK")
 print("TARGET ........... OK")
 print("FLIGHT ........... OK")
 print("DISPLAY .......... OK")
+
+
+if telemetry then
+
+    print(
+        "TELEMETRY ........ OK"
+    )
+
+else
+
+    print(
+        "TELEMETRY ........ DISABLED"
+    )
+
+end
+
+
 print("")
 print("Starting systems...")
 print("")
@@ -452,6 +554,11 @@ end
 
 local function telemetryProcess()
 
+    if not telemetry then
+        return
+    end
+
+
     local success,
     err =
         pcall(
@@ -462,23 +569,35 @@ local function telemetryProcess()
 
     if not success then
 
-        state.system.error =
-            "TELEMETRY: " ..
+        state.telemetry =
+            state.telemetry
+            or
+            {}
+
+
+        state.telemetry.online =
+            false
+
+
+        state.telemetry.status =
+            "FAULT"
+
+
+        state.telemetry.error =
             tostring(
                 err
             )
 
 
-        state.system.status =
-            "FAULT"
-
-
-        state.system.running =
-            false
+        --------------------------------------------------
+        -- Telemetry failure must NOT stop the missile
+        -- control system.
+        --------------------------------------------------
 
     end
 
 end
+
 
 --------------------------------------------------
 -- ONLINE
@@ -492,23 +611,45 @@ state.system.status =
 -- START ALL SYSTEMS
 --------------------------------------------------
 
-parallel.waitForAll(
+if telemetry then
 
-    navigationProcess,
+    parallel.waitForAll(
 
-    guidanceProcess,
+        navigationProcess,
 
-    actuatorProcess,
+        guidanceProcess,
 
-    targetProcess,
+        actuatorProcess,
 
-    flightProcess,
+        targetProcess,
 
-    displayProcess,
+        flightProcess,
 
-    telemetryProcess
+        displayProcess,
 
-)
+        telemetryProcess
+
+    )
+
+else
+
+    parallel.waitForAll(
+
+        navigationProcess,
+
+        guidanceProcess,
+
+        actuatorProcess,
+
+        targetProcess,
+
+        flightProcess,
+
+        displayProcess
+
+    )
+
+end
 
 
 --------------------------------------------------
@@ -543,17 +684,29 @@ term.setCursorPos(
     1
 )
 
+print(
+    "================================"
+)
 
-print("================================")
-print("       MISSILE CONTROL")
-print("================================")
+print(
+    "       MISSILE CONTROL"
+)
+
+print(
+    "================================"
+)
+
 print("")
 
 
 if state.system.error then
 
-    print("SYSTEM FAULT")
+    print(
+        "SYSTEM FAULT"
+    )
+
     print("")
+
 
     print(
         state.system.error
@@ -561,7 +714,26 @@ if state.system.error then
 
 else
 
-    print("SYSTEM STOPPED")
+    print(
+        "SYSTEM STOPPED"
+    )
+
+end
+
+
+print("")
+
+
+if state.telemetry then
+
+    print(
+        "TELEMETRY: " ..
+        tostring(
+            state.telemetry.status
+            or
+            "UNKNOWN"
+        )
+    )
 
 end
 
