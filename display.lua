@@ -10,6 +10,9 @@
 -- S = start position
 -- C = control
 -- Q = shutdown
+--
+-- Navigation device status is taken directly
+-- from navigation.lua.
 
 --------------------------------------------------
 -- SCREEN
@@ -43,9 +46,8 @@ local START_FILE =
 -- INITIALIZATION
 --------------------------------------------------
 
-if type(
-    screen.setTextScale
-) == "function" then
+if type(screen.setTextScale)
+    == "function" then
 
     pcall(
         screen.setTextScale,
@@ -74,11 +76,14 @@ local function clear()
         colors.black
     )
 
+
     screen.setTextColor(
         colors.white
     )
 
+
     screen.clear()
+
 
     screen.setCursorPos(
         1,
@@ -89,7 +94,7 @@ end
 
 
 --------------------------------------------------
--- WRITE
+-- WRITE LINE
 --------------------------------------------------
 
 local function writeLine(
@@ -101,7 +106,6 @@ local function writeLine(
         or row > height then
 
         return
-
     end
 
 
@@ -129,6 +133,7 @@ local function writeLine(
 
 
     screen.clearLine()
+
 
     screen.write(
         value
@@ -197,10 +202,10 @@ end
 
 
 --------------------------------------------------
--- BOOL STATUS
+-- BOOLEAN STATUS
 --------------------------------------------------
 
-local function signalStatus(
+local function status(
     value
 )
 
@@ -248,7 +253,7 @@ local function header(
 
     writeLine(
         4,
-        "I=TARGET S=START C=CONTROL"
+        "I=TGT S=START C=CTRL"
     )
 
 
@@ -290,23 +295,41 @@ local function drawNavigation(
 
     local p =
         n.position
-        or {}
+        or
+        {
+            x = 0,
+            y = 0,
+            z = 0
+        }
 
 
     local v =
         n.velocity
-        or {}
+        or
+        {
+            x = 0,
+            y = 0,
+            z = 0
+        }
 
+
+    --------------------------------------------------
+    -- SYSTEM STATUS
+    --------------------------------------------------
 
     writeLine(
         7,
-        "STATUS: " ..
+        "NAV STATUS: " ..
         tostring(
             n.status
             or "OFFLINE"
         )
     )
 
+
+    --------------------------------------------------
+    -- POSITION
+    --------------------------------------------------
 
     writeLine(
         8,
@@ -333,6 +356,10 @@ local function drawNavigation(
     )
 
 
+    --------------------------------------------------
+    -- FLIGHT
+    --------------------------------------------------
+
     writeLine(
         10,
         "ALT " ..
@@ -354,9 +381,14 @@ local function drawNavigation(
         fmt(
             n.speed,
             2
-        )
+        ) ..
+        " m/s"
     )
 
+
+    --------------------------------------------------
+    -- ATTITUDE
+    --------------------------------------------------
 
     writeLine(
         12,
@@ -374,6 +406,10 @@ local function drawNavigation(
         )
     )
 
+
+    --------------------------------------------------
+    -- VELOCITY
+    --------------------------------------------------
 
     writeLine(
         13,
@@ -400,6 +436,10 @@ local function drawNavigation(
     )
 
 
+    --------------------------------------------------
+    -- ANGULAR RATE
+    --------------------------------------------------
+
     writeLine(
         15,
         "ANG X " ..
@@ -425,26 +465,46 @@ local function drawNavigation(
     )
 
 
+    --------------------------------------------------
+    -- TARGET VECTOR
+    --------------------------------------------------
+
     writeLine(
         17,
-        "BEARING " ..
-        deg(
-            n.bearing
+        "TARGET DX " ..
+        fmt(
+            n.targetDeltaX,
+            1
         )
     )
 
 
     writeLine(
         18,
-        "ELEVATION " ..
-        deg(
-            n.elevation
+        "TARGET DY " ..
+        fmt(
+            n.targetDeltaY,
+            1
         )
     )
 
 
     writeLine(
         19,
+        "TARGET DZ " ..
+        fmt(
+            n.targetDeltaZ,
+            1
+        )
+    )
+
+
+    --------------------------------------------------
+    -- RANGE
+    --------------------------------------------------
+
+    writeLine(
+        20,
         "DIST " ..
         fmt(
             n.distance,
@@ -455,50 +515,48 @@ local function drawNavigation(
 
 
     writeLine(
-        20,
-        "CLOSURE " ..
-        fmt(
-            n.closureRate,
-            2
-        )
-    )
-
-
-    --------------------------------------------------
-    -- SENSOR SIGNAL STATUS
-    --------------------------------------------------
-
-    writeLine(
         21,
-        "NAV TABLE: " ..
-        signalStatus(
-            n.navigationTable
+        "BEARING " ..
+        deg(
+            n.bearing
         )
     )
 
 
     writeLine(
         22,
-        "ALT SENSOR: " ..
-        signalStatus(
-            n.altitudeSensor
+        "ELEVATION " ..
+        deg(
+            n.elevation
         )
     )
 
 
+    --------------------------------------------------
+    -- SENSOR STATUS
+    --------------------------------------------------
+
     writeLine(
         23,
-        "GIMBAL: " ..
-        signalStatus(
-            n.gimbalSensor
+        "NAV TABLE: " ..
+        status(
+            n.navigationTable
         )
     )
 
 
     writeLine(
         24,
-        "VELOCITY: " ..
-        signalStatus(
+        "ALT:" ..
+        status(
+            n.altitudeSensor
+        ) ..
+        " GIM:" ..
+        status(
+            n.gimbalSensor
+        ) ..
+        " VEL:" ..
+        status(
             n.velocitySensor
         )
     )
@@ -581,7 +639,8 @@ local function drawGuidance(
         fmt(
             n.distance,
             1
-        )
+        ) ..
+        " m"
     )
 
 
@@ -748,23 +807,12 @@ local function drawEngine(
         or {}
 
 
-    local found =
-        tonumber(
-            t.engineCount
-        ) or 0
-
-
-    local commanded =
-        tonumber(
-            t.commandedEngines
-        ) or 0
-
-
     writeLine(
         7,
         "ENGINES FOUND: " ..
         tostring(
-            found
+            t.engineCount
+            or 0
         )
     )
 
@@ -773,11 +821,13 @@ local function drawEngine(
         8,
         "COMMAND SENT: " ..
         tostring(
-            commanded
+            t.commandedEngines
+            or 0
         ) ..
         "/" ..
         tostring(
-            found
+            t.engineCount
+            or 0
         )
     )
 
@@ -884,16 +934,12 @@ local function drawEngine(
 
 
     --------------------------------------------------
-    -- ENGINE LIST
+    -- ENGINE NAMES
     --------------------------------------------------
 
     local engines =
         t.engines
         or {}
-
-
-    local row =
-        19
 
 
     for i = 1,
@@ -931,19 +977,19 @@ local function drawEngine(
 
 
         writeLine(
-            row,
+            18 + i,
             "E" ..
             tostring(i) ..
             ": " ..
             name
         )
 
-
-        row =
-            row + 1
-
     end
 
+
+    --------------------------------------------------
+    -- BOTTOM
+    --------------------------------------------------
 
     if next(
         t.commandErrors
@@ -953,7 +999,6 @@ local function drawEngine(
         writeLine(
             24,
             "COMMAND ERROR"
-
         )
 
     else
@@ -961,7 +1006,6 @@ local function drawEngine(
         writeLine(
             24,
             "[C] CONTROL ON/OFF"
-
         )
 
     end
@@ -1006,6 +1050,10 @@ local function drawSystem(
         or {}
 
 
+    --------------------------------------------------
+    -- CORE
+    --------------------------------------------------
+
     writeLine(
         7,
         "SYSTEM: " ..
@@ -1018,7 +1066,7 @@ local function drawSystem(
     writeLine(
         8,
         "NAV: " ..
-        signalStatus(
+        status(
             n.online
         )
     )
@@ -1027,7 +1075,7 @@ local function drawSystem(
     writeLine(
         9,
         "GUIDANCE: " ..
-        signalStatus(
+        status(
             g.online
         )
     )
@@ -1036,7 +1084,7 @@ local function drawSystem(
     writeLine(
         10,
         "THRUSTER: " ..
-        signalStatus(
+        status(
             t.online
         )
     )
@@ -1064,13 +1112,13 @@ local function drawSystem(
 
 
     --------------------------------------------------
-    -- SENSOR SIGNALS
+    -- SENSOR STATUS
     --------------------------------------------------
 
     writeLine(
         14,
-        "NAV TABLE " ..
-        signalStatus(
+        "NAV TABLE: " ..
+        status(
             n.navigationTable
         )
     )
@@ -1078,38 +1126,48 @@ local function drawSystem(
 
     writeLine(
         15,
-        "ALT SENSOR " ..
-        signalStatus(
-            n.altitudeSensor
+        "NAV TARGET: " ..
+        tostring(
+            n.navigationTargetStatus
+            or "UNKNOWN"
         )
     )
 
 
     writeLine(
         16,
-        "GIMBAL " ..
-        signalStatus(
-            n.gimbalSensor
+        "ALT SENSOR: " ..
+        status(
+            n.altitudeSensor
         )
     )
 
 
     writeLine(
         17,
-        "VELOCITY " ..
-        signalStatus(
+        "GIMBAL: " ..
+        status(
+            n.gimbalSensor
+        )
+    )
+
+
+    writeLine(
+        18,
+        "VELOCITY: " ..
+        status(
             n.velocitySensor
         )
     )
 
 
     --------------------------------------------------
-    -- TARGET
+    -- MANUAL TARGET
     --------------------------------------------------
 
     writeLine(
-        19,
-        "TARGET " ..
+        20,
+        "MANUAL TARGET: " ..
         (
             state.target.set
             and "SET"
@@ -1119,18 +1177,18 @@ local function drawSystem(
 
 
     writeLine(
-        20,
-        "T: " ..
+        21,
+        "T " ..
         fmt(
             state.target.x,
             0
         ) ..
-        ", " ..
+        " " ..
         fmt(
             state.target.y,
             0
         ) ..
-        ", " ..
+        " " ..
         fmt(
             state.target.z,
             0
@@ -1143,23 +1201,8 @@ local function drawSystem(
     --------------------------------------------------
 
     writeLine(
-        22,
-        "ENGINES: " ..
-        tostring(
-            t.engineCount
-            or 0
-        )
-    )
-
-
-    writeLine(
         23,
-        "COMMAND: " ..
-        tostring(
-            t.commandedEngines
-            or 0
-        ) ..
-        "/" ..
+        "ENGINES " ..
         tostring(
             t.engineCount
             or 0
@@ -1169,8 +1212,16 @@ local function drawSystem(
 
     writeLine(
         24,
-        "I=TGT S=START C=CTRL"
-
+        "COMMAND " ..
+        tostring(
+            t.commandedEngines
+            or 0
+        ) ..
+        "/" ..
+        tostring(
+            t.engineCount
+            or 0
+        )
     )
 
 end
@@ -1331,6 +1382,10 @@ local function coordinateInput(
             os.pullEventRaw()
 
 
+        --------------------------------------------------
+        -- CHARACTER
+        --------------------------------------------------
+
         if event ==
             "char" then
 
@@ -1351,8 +1406,17 @@ local function coordinateInput(
             end
 
 
+        --------------------------------------------------
+        -- KEY
+        --------------------------------------------------
+
         elseif event ==
             "key" then
+
+
+            --------------------------------------------------
+            -- BACKSPACE
+            --------------------------------------------------
 
             if a ==
                 keys.backspace then
@@ -1366,6 +1430,10 @@ local function coordinateInput(
 
                 redraw()
 
+
+            --------------------------------------------------
+            -- ENTER
+            --------------------------------------------------
 
             elseif a ==
                 keys.enter then
@@ -1387,7 +1455,6 @@ local function coordinateInput(
 
                     redraw()
 
-
                 elseif active < 3 then
 
                     active =
@@ -1396,19 +1463,12 @@ local function coordinateInput(
 
                     redraw()
 
-
                 else
 
                     callback(
-                        tonumber(
-                            values[1]
-                        ),
-                        tonumber(
-                            values[2]
-                        ),
-                        tonumber(
-                            values[3]
-                        )
+                        tonumber(values[1]),
+                        tonumber(values[2]),
+                        tonumber(values[3])
                     )
 
 
@@ -1416,6 +1476,10 @@ local function coordinateInput(
 
                 end
 
+
+            --------------------------------------------------
+            -- CANCEL
+            --------------------------------------------------
 
             elseif a ==
                 keys.r then
@@ -1429,12 +1493,12 @@ local function coordinateInput(
 
             end
 
-
         elseif event ==
             "terminate" then
 
             state.system.running =
                 false
+
 
             return
 
@@ -1523,7 +1587,7 @@ end
 
 
 --------------------------------------------------
--- START INPUT
+-- START POSITION INPUT
 --------------------------------------------------
 
 local function setStart(
@@ -1780,6 +1844,7 @@ local function handleKey(
             state
         )
 
+
         return
 
 
@@ -1788,6 +1853,7 @@ local function handleKey(
         setStart(
             state
         )
+
 
         return
 
@@ -1826,6 +1892,7 @@ local function handleKey(
             state
         )
 
+
         return
 
 
@@ -1834,8 +1901,10 @@ local function handleKey(
         state.system.controlEnabled =
             false
 
+
         state.system.running =
             false
+
 
         return
 
@@ -1856,6 +1925,16 @@ end
 local function run(
     state
 )
+
+    if type(state) ~=
+        "table" then
+
+        error(
+            "DISPLAY: INVALID STATE"
+        )
+
+    end
+
 
     state.display =
         state.display
@@ -1900,19 +1979,6 @@ local function run(
 
 
         elseif event ==
-            "monitor_touch" then
-
-            local x =
-                a
-
-
-            local y =
-                select(
-                    3,
-                    os.pullEvent()
-                )
-
-        elseif event ==
             "terminate" then
 
             state.system.controlEnabled =
@@ -1927,6 +1993,10 @@ local function run(
     end
 
 
+    --------------------------------------------------
+    -- SAFE SHUTDOWN
+    --------------------------------------------------
+
     state.system.controlEnabled =
         false
 
@@ -1935,6 +2005,7 @@ local function run(
 
         state.guidance.commandX =
             0
+
 
         state.guidance.commandY =
             0
