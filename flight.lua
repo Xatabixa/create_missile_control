@@ -213,6 +213,9 @@ local function run(
 
     local function startFlight()
 
+        state.system.controlEnabled =
+            true
+
         state.flight.active =
             true
 

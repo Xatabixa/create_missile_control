@@ -2823,7 +2823,31 @@ local function handleKey(
 
 
     elseif key ==
-        keys.c then
+    keys.c then
+
+    --------------------------------------------------
+    -- CONTROL
+    --
+    -- Before flight:
+    --   C arms/enables control.
+    --
+    -- During flight:
+    --   control stays latched ON.
+    --
+    -- Q remains the emergency shutdown.
+    --------------------------------------------------
+
+    if state.flight
+        and
+        state.flight.active then
+
+        state.system.controlEnabled =
+            true
+
+        state.system.status =
+            "CONTROL LOCKED"
+
+    else
 
         state.system.controlEnabled =
             not state.system.controlEnabled
@@ -2851,6 +2875,8 @@ local function handleKey(
             end
 
         end
+
+    end
 
 
     elseif key ==
