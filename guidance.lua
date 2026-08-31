@@ -1,21 +1,23 @@
 -- Missile Guidance System
 -- CC:Tweaked
 --
--- Guidance calculations are performed even when
--- CONTROL is OFF.
+-- Manual target comes from state.target.
 --
--- When CONTROL is OFF:
---   - target geometry is calculated
---   - yaw/pitch errors are calculated
---   - telemetry is updated
---   - engine commands remain ZERO
+-- IMPORTANT:
+-- Navigation Table's own target is NOT required.
+-- state.navigation.hasNavTarget is NOT used to
+-- validate the manual target.
 --
--- When CONTROL is ON:
---   - PID is enabled
---   - commands are sent to actuator.lua
+-- CONTROL OFF:
+--   guidance still calculates target geometry
+--   and attitude error
+--   but engine commands remain zero.
+--
+-- CONTROL ON:
+--   PID commands are generated.
 
 --------------------------------------------------
--- UPDATE
+-- SETTINGS
 --------------------------------------------------
 
 local UPDATE_INTERVAL = 0.05
@@ -73,14 +75,14 @@ local MAX_PITCH_INTEGRAL = 0.5
 
 
 --------------------------------------------------
--- COMMAND SLEW
+-- OUTPUT SLEW
 --------------------------------------------------
 
 local MAX_COMMAND_STEP = 0.004
 
 
 --------------------------------------------------
--- TARGET REACHED
+-- ARRIVAL
 --------------------------------------------------
 
 local ARRIVAL_DISTANCE = 5
@@ -98,7 +100,8 @@ local function clamp(
 
     value =
         tonumber(value)
-        or 0
+        or
+        0
 
 
     if value < minimum then
@@ -117,7 +120,7 @@ end
 
 
 --------------------------------------------------
--- NORMALIZE ANGLE
+-- ANGLE NORMALIZATION
 --------------------------------------------------
 
 local function normalizeAngle(
@@ -126,7 +129,8 @@ local function normalizeAngle(
 
     angle =
         tonumber(angle)
-        or 0
+        or
+        0
 
 
     while angle > math.pi do
@@ -230,10 +234,8 @@ local function run(state)
     g.online =
         true
 
-
     g.status =
         "ONLINE"
-
 
     g.active =
         false
@@ -242,14 +244,12 @@ local function run(state)
     g.commandX =
         0
 
-
     g.commandY =
         0
 
 
     g.yawError =
         0
-
 
     g.pitchError =
         0
@@ -258,7 +258,6 @@ local function run(state)
     g.yawRate =
         0
 
-
     g.pitchRate =
         0
 
@@ -266,10 +265,8 @@ local function run(state)
     g.yawP =
         0
 
-
     g.yawI =
         0
-
 
     g.yawD =
         0
@@ -278,10 +275,8 @@ local function run(state)
     g.pitchP =
         0
 
-
     g.pitchI =
         0
-
 
     g.pitchD =
         0
@@ -290,14 +285,12 @@ local function run(state)
     g.yawIntegral =
         0
 
-
     g.pitchIntegral =
         0
 
 
     g.targetBearing =
         0
-
 
     g.targetElevation =
         0
@@ -306,10 +299,8 @@ local function run(state)
     g.targetDX =
         0
 
-
     g.targetDY =
         0
-
 
     g.targetDZ =
         0
@@ -322,10 +313,8 @@ local function run(state)
     g.flightPhase =
         "READY"
 
-
     g.flightTime =
         0
-
 
     g.phaseTime =
         0
@@ -338,17 +327,15 @@ local function run(state)
     g.boostAltitude =
         100
 
-
     g.cruiseAltitude =
         300
-
 
     g.terminalDistance =
         500
 
 
     --------------------------------------------------
-    -- INTERNAL PID STATE
+    -- INTERNAL STATE
     --------------------------------------------------
 
     local yawIntegral =
@@ -382,7 +369,7 @@ local function run(state)
 
 
         --------------------------------------------------
-        -- NAVIGATION CHECK
+        -- NAVIGATION DEVICE
         --------------------------------------------------
 
         if type(n) ~= "table"
@@ -397,21 +384,29 @@ local function run(state)
                 false
 
 
-            g.yawError =
+            g.distance =
                 0
 
+
+            g.targetDX =
+                0
+
+            g.targetDY =
+                0
+
+            g.targetDZ =
+                0
+
+
+            g.yawError =
+                0
 
             g.pitchError =
                 0
 
 
-            g.distance =
-                0
-
-
             yawIntegral =
                 0
-
 
             pitchIntegral =
                 0
@@ -435,7 +430,6 @@ local function run(state)
 
             g.commandX =
                 currentCommandX
-
 
             g.commandY =
                 currentCommandY
@@ -447,18 +441,19 @@ local function run(state)
 
 
         --------------------------------------------------
-        -- TARGET CHECK
+        -- MANUAL TARGET
+        --
+        -- ONLY state.target.set matters here.
+        -- Navigation Table target is irrelevant.
         --------------------------------------------------
 
-        local targetSet =
-            type(state.target) == "table"
-            and
-            state.target.set == true
+        local target =
+            state.target
 
 
-        if not targetSet
+        if type(target) ~= "table"
             or
-            n.hasNavTarget ~= true then
+            target.set ~= true then
 
             g.status =
                 "NO TARGET"
@@ -468,25 +463,22 @@ local function run(state)
                 false
 
 
+            g.distance =
+                0
+
+
             g.targetDX =
                 0
 
-
             g.targetDY =
                 0
-
 
             g.targetDZ =
                 0
 
 
-            g.distance =
-                0
-
-
             g.yawError =
                 0
-
 
             g.pitchError =
                 0
@@ -494,7 +486,6 @@ local function run(state)
 
             yawIntegral =
                 0
-
 
             pitchIntegral =
                 0
@@ -518,7 +509,6 @@ local function run(state)
 
             g.commandX =
                 currentCommandX
-
 
             g.commandY =
                 currentCommandY
@@ -531,30 +521,87 @@ local function run(state)
 
         --------------------------------------------------
         -- TARGET VECTOR
-        --
-        -- IMPORTANT:
-        -- This section runs even when CONTROL is OFF.
         --------------------------------------------------
 
         local dx =
             tonumber(
                 n.targetDeltaX
             )
-            or 0
 
 
         local dy =
             tonumber(
                 n.targetDeltaY
             )
-            or 0
 
 
         local dz =
             tonumber(
                 n.targetDeltaZ
             )
-            or 0
+
+
+        --------------------------------------------------
+        -- FALLBACK
+        --
+        -- If navigation hasn't generated the vector yet,
+        -- calculate it directly from position and target.
+        --------------------------------------------------
+
+        if not dx
+            or
+            not dy
+            or
+            not dz then
+
+            local position =
+                n.position
+                or
+                {}
+
+
+            dx =
+                (
+                    tonumber(target.x)
+                    or
+                    0
+                )
+                -
+                (
+                    tonumber(position.x)
+                    or
+                    0
+                )
+
+
+            dy =
+                (
+                    tonumber(target.y)
+                    or
+                    0
+                )
+                -
+                (
+                    tonumber(position.y)
+                    or
+                    0
+                )
+
+
+            dz =
+                (
+                    tonumber(target.z)
+                    or
+                    0
+                )
+                -
+                (
+                    tonumber(position.z)
+                    or
+                    0
+                )
+
+        end
 
 
         local distance =
@@ -564,6 +611,10 @@ local function run(state)
                 dz
             )
 
+
+        --------------------------------------------------
+        -- SAVE TARGET DATA
+        --------------------------------------------------
 
         g.targetDX =
             dx
@@ -582,7 +633,7 @@ local function run(state)
 
 
         --------------------------------------------------
-        -- FLIGHT DATA
+        -- FLIGHT
         --------------------------------------------------
 
         local flight =
@@ -641,6 +692,63 @@ local function run(state)
 
 
         --------------------------------------------------
+        -- TARGET REACHED
+        --------------------------------------------------
+
+        if distance <=
+            ARRIVAL_DISTANCE then
+
+            g.status =
+                "TARGET REACHED"
+
+
+            g.active =
+                false
+
+
+            g.yawError =
+                0
+
+            g.pitchError =
+                0
+
+
+            yawIntegral =
+                0
+
+            pitchIntegral =
+                0
+
+
+            currentCommandX =
+                approach(
+                    currentCommandX,
+                    0,
+                    MAX_COMMAND_STEP
+                )
+
+
+            currentCommandY =
+                approach(
+                    currentCommandY,
+                    0,
+                    MAX_COMMAND_STEP
+                )
+
+
+            g.commandX =
+                currentCommandX
+
+            g.commandY =
+                currentCommandY
+
+
+            return
+
+        end
+
+
+        --------------------------------------------------
         -- FORWARD VECTOR
         --------------------------------------------------
 
@@ -696,14 +804,12 @@ local function run(state)
             g.yawError =
                 0
 
-
             g.pitchError =
                 0
 
 
             g.commandX =
                 0
-
 
             g.commandY =
                 0
@@ -734,35 +840,33 @@ local function run(state)
 
 
         --------------------------------------------------
-        -- TARGET UNIT VECTOR
+        -- NORMALIZE TARGET
         --------------------------------------------------
 
-        local tx =
-            dx /
+        local targetLength =
             math.max(
                 distance,
                 0.000001
             )
+
+
+        local tx =
+            dx /
+            targetLength
 
 
         local ty =
             dy /
-            math.max(
-                distance,
-                0.000001
-            )
+            targetLength
 
 
         local tz =
             dz /
-            math.max(
-                distance,
-                0.000001
-            )
+            targetLength
 
 
         --------------------------------------------------
-        -- HORIZONTAL COMPONENTS
+        -- HORIZONTAL
         --------------------------------------------------
 
         local forwardHorizontal =
@@ -894,7 +998,7 @@ local function run(state)
 
 
         --------------------------------------------------
-        -- ANGULAR RATES
+        -- RATES
         --------------------------------------------------
 
         local yawRate =
@@ -922,7 +1026,7 @@ local function run(state)
 
 
         --------------------------------------------------
-        -- PHASE VECTOR LIMIT
+        -- VECTOR LIMIT
         --------------------------------------------------
 
         local phaseLimit =
@@ -963,53 +1067,28 @@ local function run(state)
 
 
         --------------------------------------------------
-        -- TARGET REACHED
+        -- CURRENT TIME
         --------------------------------------------------
 
-        if distance <=
-            ARRIVAL_DISTANCE then
-
-            g.status =
-                "TARGET REACHED"
+        local now =
+            os.clock()
 
 
-            g.active =
-                false
+        local dt =
+            now -
+            previousTime
 
 
-            yawIntegral =
-                0
+        previousTime =
+            now
 
 
-            pitchIntegral =
-                0
+        if dt <= 0
+            or
+            dt > 0.5 then
 
-
-            currentCommandX =
-                approach(
-                    currentCommandX,
-                    0,
-                    MAX_COMMAND_STEP
-                )
-
-
-            currentCommandY =
-                approach(
-                    currentCommandY,
-                    0,
-                    MAX_COMMAND_STEP
-                )
-
-
-            g.commandX =
-                currentCommandX
-
-
-            g.commandY =
-                currentCommandY
-
-
-            return
+            dt =
+                UPDATE_INTERVAL
 
         end
 
@@ -1017,8 +1096,8 @@ local function run(state)
         --------------------------------------------------
         -- CONTROL OFF
         --
-        -- Calculation continues,
-        -- commands remain zero.
+        -- Calculate everything above,
+        -- but NEVER command the engines.
         --------------------------------------------------
 
         if state.system.controlEnabled
@@ -1034,7 +1113,6 @@ local function run(state)
 
             yawIntegral =
                 0
-
 
             pitchIntegral =
                 0
@@ -1073,39 +1151,12 @@ local function run(state)
         -- CONTROL ACTIVE
         --------------------------------------------------
 
-        g.active =
-            true
-
-
         g.status =
             "GUIDANCE ACTIVE"
 
 
-        --------------------------------------------------
-        -- TIME
-        --------------------------------------------------
-
-        local now =
-            os.clock()
-
-
-        local dt =
-            now -
-            previousTime
-
-
-        previousTime =
-            now
-
-
-        if dt <= 0
-            or
-            dt > 0.5 then
-
-            dt =
-                UPDATE_INTERVAL
-
-        end
+        g.active =
+            true
 
 
         --------------------------------------------------
@@ -1172,8 +1223,7 @@ local function run(state)
         else
 
             yawIntegral =
-                yawIntegral *
-                0.90
+                yawIntegral * 0.90
 
         end
 
@@ -1188,8 +1238,7 @@ local function run(state)
         else
 
             pitchIntegral =
-                pitchIntegral *
-                0.90
+                pitchIntegral * 0.90
 
         end
 
@@ -1269,7 +1318,7 @@ local function run(state)
 
 
         --------------------------------------------------
-        -- TOTAL COMMAND
+        -- TOTAL
         --------------------------------------------------
 
         local yawCommand =
@@ -1307,7 +1356,7 @@ local function run(state)
 
 
         --------------------------------------------------
-        -- START RAMP
+        -- BOOST RAMP
         --------------------------------------------------
 
         if phase == "BOOST" then
@@ -1367,7 +1416,7 @@ local function run(state)
 
 
         --------------------------------------------------
-        -- SMOOTH COMMAND
+        -- SMOOTH OUTPUT
         --------------------------------------------------
 
         currentCommandY =
@@ -1396,23 +1445,6 @@ local function run(state)
 
         g.commandY =
             currentCommandY
-
-    end
-
-
-    --------------------------------------------------
-    -- LOOP
-    --------------------------------------------------
-
-    while state.system
-        and
-        state.system.running do
-
-        update()
-
-        sleep(
-            UPDATE_INTERVAL
-        )
 
     end
 
