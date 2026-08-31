@@ -443,17 +443,16 @@ local function saveStart(
                 x =
                     tonumber(
                         state.startPosition.x
-                    ) or 0,
-
-                y =
-                    tonumber(
-                        state.startPosition.y
-                    ) or 0,
+                    )
+                    or
+                    0,
 
                 z =
                     tonumber(
                         state.startPosition.z
-                    ) or 0,
+                    )
+                    or
+                    0,
 
                 set =
                     state.startPosition.set
@@ -2466,38 +2465,229 @@ local function setStart(
     state
 )
 
-    coordinateInput(
-        state,
-        "START POSITION",
-        function(x, y, z)
+    local values = {
+        "",
+        ""
+    }
 
-            state.startPosition.x =
-                x
-
-
-            state.startPosition.y =
-                y
+    local active = 1
 
 
-            state.startPosition.z =
-                z
+    local function redraw()
+
+        clear()
 
 
-            state.startPosition.set =
-                true
+        full(
+            1,
+            "=== MISSILE CONTROL ==="
+        )
 
 
-            saveStart(
-                state
-            )
+        full(
+            2,
+            "START POSITION"
+        )
 
 
-            draw(
-                state
-            )
+        full(
+            3,
+            "--------------------------------"
+        )
+
+
+        full(
+            5,
+            "ENTER X / Z"
+        )
+
+
+        full(
+            7,
+            (
+                active == 1
+                and
+                "> X: "
+                or
+                "  X: "
+            ) ..
+            values[1]
+        )
+
+
+        full(
+            8,
+            (
+                active == 2
+                and
+                "> Z: "
+                or
+                "  Z: "
+            ) ..
+            values[2]
+        )
+
+
+        full(
+            10,
+            "Y = ALTITUDE SENSOR"
+        )
+
+
+        full(
+            12,
+            "ENTER = NEXT / SAVE"
+        )
+
+
+        full(
+            13,
+            "BACKSPACE = DELETE"
+        )
+
+
+        full(
+            14,
+            "R = CANCEL"
+        )
+
+    end
+
+
+    redraw()
+
+
+    while true do
+
+        local event,
+            a =
+            os.pullEventRaw()
+
+
+        if event ==
+            "char" then
+
+            if type(a) ==
+                "string"
+                and
+                a:match(
+                    "[%d%.-]"
+                ) then
+
+                values[active] =
+                    values[active] ..
+                    a
+
+
+                redraw()
+
+            end
+
+
+        elseif event ==
+            "key" then
+
+
+            if a ==
+                keys.backspace then
+
+                values[active] =
+                    values[active]:sub(
+                        1,
+                        -2
+                    )
+
+
+                redraw()
+
+
+            elseif a ==
+                keys.enter then
+
+                if not tonumber(
+                    values[active]
+                ) then
+
+                    full(
+                        16,
+                        "INVALID COORDINATE"
+                    )
+
+
+                    sleep(
+                        0.8
+                    )
+
+
+                    redraw()
+
+
+                elseif active < 2 then
+
+                    active =
+                        active + 1
+
+
+                    redraw()
+
+
+                else
+
+                    state.startPosition.x =
+                        tonumber(
+                            values[1]
+                        )
+
+
+                    state.startPosition.z =
+                        tonumber(
+                            values[2]
+                        )
+
+
+                    state.startPosition.set =
+                        true
+
+
+                    --------------------------------------------------
+                    -- Y is deliberately NOT written.
+                    --------------------------------------------------
+
+                    saveStart(
+                        state
+                    )
+
+
+                    draw(
+                        state
+                    )
+
+
+                    return
+
+                end
+
+
+            elseif a ==
+                keys.r then
+
+                return
+
+            end
+
+
+        elseif event ==
+            "terminate" then
+
+            state.system.running =
+                false
+
+
+            return
 
         end
-    )
+
+    end
 
 end
 

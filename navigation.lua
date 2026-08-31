@@ -1,21 +1,27 @@
 -- Missile Navigation System
 -- CC:Tweaked
 --
--- Uses:
---   Navigation Table
---   Gimbal Sensor
---   Altitude Sensor
---   Velocity Sensor
+-- Current architecture:
+--   target.cfg -> state.target
+--   start.cfg  -> start X/Z
+--   Altitude Sensor -> current Y
 --
--- Manual target comes from state.target.
--- Start position comes from start.cfg.
+-- Physical configuration:
+--   Navigation Table x1
+--   Gimbal Sensor x1
+--   Altitude Sensor x1
+--   Velocity Sensor x1 (may appear through 2 modems)
 --
--- Navigation Table orientation is converted to
--- a world-space forward vector.
+-- IMPORTANT:
+-- Navigation Table +Z is mounted opposite to the
+-- missile nose in the current rocket construction.
 --
--- Target direction is compared directly with
--- the forward vector. No bearing-heading subtraction
--- is used for manual guidance.
+-- Therefore:
+--   table forward = +Z
+--   rocket forward = -table forward
+--
+-- Manual target is independent from Navigation Table's
+-- internal target.
 
 --------------------------------------------------
 -- SETTINGS
@@ -29,113 +35,46 @@ local START_FILE = "start.cfg"
 -- HELPERS
 --------------------------------------------------
 
-local function isNumber(v)
-    return type(v) == "number" and v == v
+local function isNumber(value)
+
+    return type(value) == "number"
+        and value == value
+
 end
 
 
---------------------------------------------------
--- SAFE CALL
---------------------------------------------------
-
 local function safeCall(device, method, ...)
+
     if not device then
         return false, nil
     end
 
+
     local fn = device[method]
+
 
     if type(fn) ~= "function" then
         return false, nil
     end
 
-    local ok, a, b, c, d =
+
+    local ok,
+        a,
+        b,
+        c,
+        d =
         pcall(fn, ...)
+
 
     if not ok then
         return false, nil
     end
 
+
     return true, a, b, c, d
+
 end
 
-
---------------------------------------------------
--- FIND FIRST DEVICE
---------------------------------------------------
-
-local function findFirstType(pType)
-
-    for _, name in ipairs(
-        peripheral.getNames()
-    ) do
-
-        if peripheral.hasType(
-            name,
-            pType
-        ) then
-
-            if peripheral.isPresent(name) then
-
-                local device =
-                    peripheral.wrap(name)
-
-                if device then
-                    return device, name
-                end
-
-            end
-
-        end
-
-    end
-
-    return nil, nil
-end
-
-
---------------------------------------------------
--- FIND VELOCITY SENSOR
---
--- The same physical sensor can appear through
--- multiple modems. Only the first valid one is used.
---------------------------------------------------
-
-local function findVelocitySensor()
-
-    for _, name in ipairs(
-        peripheral.getNames()
-    ) do
-
-        if peripheral.hasType(
-            name,
-            "velocity_sensor"
-        ) then
-
-            if peripheral.isPresent(name) then
-
-                local device =
-                    peripheral.wrap(name)
-
-                if device then
-
-                    return device, name
-
-                end
-
-            end
-
-        end
-
-    end
-
-    return nil, nil
-end
-
-
---------------------------------------------------
--- VECTOR LENGTH
---------------------------------------------------
 
 local function vectorLength(x, y, z)
 
@@ -148,18 +87,22 @@ local function vectorLength(x, y, z)
 end
 
 
---------------------------------------------------
--- NORMALIZE VECTOR
---------------------------------------------------
-
 local function normalize(x, y, z)
 
     local length =
-        vectorLength(x, y, z)
+        vectorLength(
+            x,
+            y,
+            z
+        )
+
 
     if length < 0.000001 then
+
         return 0, 0, 0
+
     end
+
 
     return
         x / length,
@@ -170,7 +113,66 @@ end
 
 
 --------------------------------------------------
--- NORMALIZE QUATERNION
+-- PERIPHERAL DISCOVERY
+--------------------------------------------------
+
+local function findFirstType(
+    peripheralType
+)
+
+    for _, name in ipairs(
+        peripheral.getNames()
+    ) do
+
+        if peripheral.hasType(
+            name,
+            peripheralType
+        ) then
+
+            if peripheral.isPresent(
+                name
+            ) then
+
+                local device =
+                    peripheral.wrap(name)
+
+
+                if device then
+
+                    return device, name
+
+                end
+
+            end
+
+        end
+
+    end
+
+
+    return nil, nil
+
+end
+
+
+--------------------------------------------------
+-- VELOCITY SENSOR
+--
+-- One physical sensor may be visible through
+-- two modems. Only the first valid instance is used.
+--------------------------------------------------
+
+local function findVelocitySensor()
+
+    return findFirstType(
+        "velocity_sensor"
+    )
+
+end
+
+
+--------------------------------------------------
+-- QUATERNION
 --------------------------------------------------
 
 local function normalizeQuaternion(
@@ -188,9 +190,13 @@ local function normalizeQuaternion(
             w * w
         )
 
+
     if length < 0.000001 then
+
         return 0, 0, 0, 1
+
     end
+
 
     return
         x / length,
@@ -221,17 +227,20 @@ local function rotateVector(
             qz * y
         )
 
+
     local ty =
         2 * (
             qz * x -
             qx * z
         )
 
+
     local tz =
         2 * (
             qx * y -
             qy * x
         )
+
 
     local rx =
         x +
@@ -241,6 +250,7 @@ local function rotateVector(
             qz * ty
         )
 
+
     local ry =
         y +
         qw * ty +
@@ -248,6 +258,7 @@ local function rotateVector(
             qz * tx -
             qx * tz
         )
+
 
     local rz =
         z +
@@ -257,13 +268,14 @@ local function rotateVector(
             qy * tx
         )
 
+
     return rx, ry, rz
 
 end
 
 
 --------------------------------------------------
--- BODY → WORLD
+-- BODY -> WORLD
 --------------------------------------------------
 
 local function bodyToWorld(
@@ -290,7 +302,7 @@ end
 
 
 --------------------------------------------------
--- WORLD → BODY
+-- WORLD -> BODY
 --------------------------------------------------
 
 local function worldToBody(
@@ -317,21 +329,25 @@ end
 
 
 --------------------------------------------------
--- START POSITION FILE
+-- START CONFIG
+--------------------------------------------------
+--
+-- Only X and Z are used.
+-- Y is deliberately ignored.
 --------------------------------------------------
 
-local function loadStartFile(state)
+local function loadStartFile(
+    state
+)
 
-    if type(state.startPosition) == "table"
-        and
-        state.startPosition.set == true then
+    if not fs.exists(
+        START_FILE
+    ) then
 
         return
+
     end
 
-    if not fs.exists(START_FILE) then
-        return
-    end
 
     local file =
         fs.open(
@@ -339,40 +355,55 @@ local function loadStartFile(state)
             "r"
         )
 
+
     if not file then
+
         return
+
     end
+
 
     local data =
         textutils.unserialize(
             file.readAll()
         )
 
+
     file.close()
 
-    if type(data) ~= "table" then
+
+    if type(data) ~=
+        "table" then
+
         return
+
     end
+
 
     state.startPosition =
         state.startPosition
         or
         {}
 
+
     state.startPosition.x =
-        tonumber(data.x)
+        tonumber(
+            data.x
+        )
         or
         0
 
-    state.startPosition.y =
-        tonumber(data.y)
-        or
-        0
 
     state.startPosition.z =
-        tonumber(data.z)
+        tonumber(
+            data.z
+        )
         or
         0
+
+
+    -- Y is intentionally NOT loaded.
+    -- Altitude Sensor owns current Y.
 
     state.startPosition.set =
         data.set == true
@@ -381,18 +412,22 @@ end
 
 
 --------------------------------------------------
--- INITIAL STATE
+-- STATE INITIALIZATION
 --------------------------------------------------
 
-local function initializeState(state)
+local function initializeState(
+    state
+)
 
     state.navigation =
         state.navigation
         or
         {}
 
+
     local n =
         state.navigation
+
 
     n.online = false
     n.status = "OFFLINE"
@@ -401,7 +436,8 @@ local function initializeState(state)
     n.navigationTableStatus = "OFF"
 
     n.navigationTarget = false
-    n.navigationTargetStatus = "NO TARGET"
+    n.navigationTargetStatus =
+        "NO TARGET"
 
     n.altitudeSensor = false
     n.gimbalSensor = false
@@ -411,13 +447,16 @@ local function initializeState(state)
     n.velocitySensorY = false
     n.velocitySensorZ = false
 
+
     n.position = {
         x = 0,
         y = 0,
         z = 0
     }
 
+
     n.positionValid = false
+
 
     n.velocity = {
         x = 0,
@@ -425,21 +464,26 @@ local function initializeState(state)
         z = 0
     }
 
+
     n.bodyVelocity = {
         x = 0,
         y = 0,
         z = 0
     }
 
+
     n.speed = 0
+
 
     n.altitude = 0
     n.verticalSpeed = 0
     n.airPressure = 0
 
+
     n.heading = 0
     n.pitch = 0
     n.roll = 0
+
 
     n.orientation = {
         x = 0,
@@ -448,24 +492,38 @@ local function initializeState(state)
         w = 1
     }
 
-    n.forward = {
+
+    -- Navigation Table orientation
+    n.tableForward = {
         x = 0,
         y = 0,
         z = 1
     }
 
+
+    -- Actual missile forward direction
+    n.forward = {
+        x = 0,
+        y = 0,
+        z = -1
+    }
+
+
     n.angularRateX = 0
     n.angularRateY = 0
     n.angularRateZ = 0
+
 
     n.accelerationX = 0
     n.accelerationY = 0
     n.accelerationZ = 0
 
+
     n.gravityX = 0
     n.gravityY = 0
     n.gravityZ = 0
     n.gravityMagnitude = 0
+
 
     n.bearing = 0
     n.relativeAngle = 0
@@ -473,19 +531,25 @@ local function initializeState(state)
     n.navTableDistance = 0
     n.closureRate = 0
 
+
     n.hasNavTarget = false
+
 
     n.targetDeltaX = 0
     n.targetDeltaY = 0
     n.targetDeltaZ = 0
+
     n.targetDistance = 0
+
 
     n.localTargetX = 0
     n.localTargetY = 0
     n.localTargetZ = 0
 
+
     n.targetYaw = 0
     n.targetPitch = 0
+
 
     n.lastUpdate = 0
     n.error = nil
@@ -497,20 +561,26 @@ end
 -- RESET SIGNAL FLAGS
 --------------------------------------------------
 
-local function resetSignals(state)
+local function resetSignals(
+    state
+)
 
     local n =
         state.navigation
+
 
     n.navigationTable = false
     n.navigationTableStatus = "OFF"
 
     n.navigationTarget = false
-    n.navigationTargetStatus = "NO TARGET"
+    n.navigationTargetStatus =
+        "NO TARGET"
+
 
     n.altitudeSensor = false
     n.gimbalSensor = false
     n.velocitySensor = false
+
 
     n.velocitySensorX = false
     n.velocitySensorY = false
@@ -523,18 +593,24 @@ end
 -- NAVIGATION TABLE
 --------------------------------------------------
 
-local function updateNavigationTable(state)
+local function updateNavigationTable(
+    state
+)
 
     local sensor =
         findFirstType(
             "navigation_table"
         )
 
+
     local n =
         state.navigation
 
+
     if not sensor then
+
         return
+
     end
 
 
@@ -543,7 +619,7 @@ local function updateNavigationTable(state)
     --------------------------------------------------
 
     local headingOK,
-    heading =
+        heading =
         safeCall(
             sensor,
             "getHeadingRad"
@@ -555,7 +631,7 @@ local function updateNavigationTable(state)
     --------------------------------------------------
 
     local orientationOK,
-    orientation =
+        orientation =
         safeCall(
             sensor,
             "getOrientation"
@@ -579,6 +655,7 @@ local function updateNavigationTable(state)
         not isNumber(orientation[4]) then
 
         return
+
     end
 
 
@@ -587,9 +664,9 @@ local function updateNavigationTable(state)
     --------------------------------------------------
 
     local qx,
-    qy,
-    qz,
-    qw =
+        qy,
+        qz,
+        qw =
         normalizeQuaternion(
             orientation[1],
             orientation[2],
@@ -599,26 +676,34 @@ local function updateNavigationTable(state)
 
 
     n.navigationTable = true
-    n.navigationTableStatus = "ONLINE"
+    n.navigationTableStatus =
+        "ONLINE"
 
-    n.heading = heading
+
+    n.heading =
+        heading
 
 
-    n.orientation.x = qx
-    n.orientation.y = qy
-    n.orientation.z = qz
-    n.orientation.w = qw
+    n.orientation.x =
+        qx
+
+    n.orientation.y =
+        qy
+
+    n.orientation.z =
+        qz
+
+    n.orientation.w =
+        qw
 
 
     --------------------------------------------------
-    -- FORWARD VECTOR
-    --
-    -- Local +Z is the forward direction.
+    -- NAVIGATION TABLE +Z
     --------------------------------------------------
 
-    local fx,
-    fy,
-    fz =
+    local tx,
+        ty,
+        tz =
         bodyToWorld(
             0,
             0,
@@ -630,27 +715,51 @@ local function updateNavigationTable(state)
         )
 
 
-    fx,
-    fy,
-    fz =
+    tx,
+    ty,
+    tz =
         normalize(
-            fx,
-            fy,
-            fz
+            tx,
+            ty,
+            tz
         )
 
 
-    n.forward.x = fx
-    n.forward.y = fy
-    n.forward.z = fz
+    n.tableForward.x =
+        tx
+
+    n.tableForward.y =
+        ty
+
+    n.tableForward.z =
+        tz
 
 
     --------------------------------------------------
-    -- INTERNAL NAV TABLE TARGET
+    -- ACTUAL ROCKET FORWARD
+    --
+    -- Current hardware installation:
+    -- rocket nose = opposite Navigation Table +Z
+    --------------------------------------------------
+
+    n.forward.x =
+        -tx
+
+    n.forward.y =
+        -ty
+
+    n.forward.z =
+        -tz
+
+
+    --------------------------------------------------
+    -- NAV TABLE INTERNAL TARGET
+    --
+    -- Diagnostic only.
     --------------------------------------------------
 
     local targetOK,
-    hasTarget =
+        hasTarget =
         safeCall(
             sensor,
             "hasTarget"
@@ -677,6 +786,9 @@ local function updateNavigationTable(state)
 
     else
 
+        n.navigationTarget =
+            false
+
         n.navigationTargetStatus =
             "UNKNOWN"
 
@@ -684,11 +796,11 @@ local function updateNavigationTable(state)
 
 
     --------------------------------------------------
-    -- OPTIONAL NAV TABLE DATA
+    -- OPTIONAL TABLE DATA
     --------------------------------------------------
 
     local ok,
-    value
+        value
 
 
     ok,
@@ -698,8 +810,12 @@ local function updateNavigationTable(state)
             "getBearingRad"
         )
 
+
     if ok and isNumber(value) then
-        n.bearing = value
+
+        n.bearing =
+            value
+
     end
 
 
@@ -710,8 +826,12 @@ local function updateNavigationTable(state)
             "getRelativeAngleRad"
         )
 
+
     if ok and isNumber(value) then
-        n.relativeAngle = value
+
+        n.relativeAngle =
+            value
+
     end
 
 
@@ -722,8 +842,12 @@ local function updateNavigationTable(state)
             "getVerticalOffsetToTarget"
         )
 
+
     if ok and isNumber(value) then
-        n.elevation = value
+
+        n.elevation =
+            value
+
     end
 
 
@@ -734,8 +858,12 @@ local function updateNavigationTable(state)
             "getDistanceToTarget"
         )
 
+
     if ok and isNumber(value) then
-        n.navTableDistance = value
+
+        n.navTableDistance =
+            value
+
     end
 
 
@@ -746,8 +874,12 @@ local function updateNavigationTable(state)
             "getClosureRate"
         )
 
+
     if ok and isNumber(value) then
-        n.closureRate = value
+
+        n.closureRate =
+            value
+
     end
 
 end
@@ -757,23 +889,29 @@ end
 -- ALTITUDE SENSOR
 --------------------------------------------------
 
-local function updateAltitude(state)
+local function updateAltitude(
+    state
+)
 
     local sensor =
         findFirstType(
             "altitude_sensor"
         )
 
+
     local n =
         state.navigation
 
+
     if not sensor then
+
         return
+
     end
 
 
     local ok,
-    altitude =
+        altitude =
         safeCall(
             sensor,
             "getHeight"
@@ -785,26 +923,25 @@ local function updateAltitude(state)
         not isNumber(altitude) then
 
         return
+
     end
 
 
-    n.altitudeSensor = true
-
-    n.altitude = altitude
-
-    --------------------------------------------------
-    -- Altitude sensor supplies world Y.
-    --------------------------------------------------
-
-    n.position.y = altitude
+    n.altitudeSensor =
+        true
 
 
-    localValue =
-        nil
+    n.altitude =
+        altitude
+
+
+    -- WORLD Y
+    n.position.y =
+        altitude
 
 
     ok,
-    localValue =
+    value =
         safeCall(
             sensor,
             "getVerticalSpeed"
@@ -813,16 +950,16 @@ local function updateAltitude(state)
 
     if ok
         and
-        isNumber(localValue) then
+        isNumber(value) then
 
         n.verticalSpeed =
-            localValue
+            value
 
     end
 
 
     ok,
-    localValue =
+    value =
         safeCall(
             sensor,
             "getAirPressure"
@@ -831,10 +968,10 @@ local function updateAltitude(state)
 
     if ok
         and
-        isNumber(localValue) then
+        isNumber(value) then
 
         n.airPressure =
-            localValue
+            value
 
     end
 
@@ -845,23 +982,29 @@ end
 -- GIMBAL SENSOR
 --------------------------------------------------
 
-local function updateGimbal(state)
+local function updateGimbal(
+    state
+)
 
     local sensor =
         findFirstType(
             "gimbal_sensor"
         )
 
+
     local n =
         state.navigation
 
+
     if not sensor then
+
         return
+
     end
 
 
     local anglesOK,
-    angles =
+        angles =
         safeCall(
             sensor,
             "getAnglesRad"
@@ -869,7 +1012,7 @@ local function updateGimbal(state)
 
 
     local ratesOK,
-    rates =
+        rates =
         safeCall(
             sensor,
             "getAngularRatesRad"
@@ -881,15 +1024,13 @@ local function updateGimbal(state)
         not ratesOK then
 
         return
+
     end
 
 
-    n.gimbalSensor = true
+    n.gimbalSensor =
+        true
 
-
-    --------------------------------------------------
-    -- ANGLES
-    --------------------------------------------------
 
     if anglesOK
         and
@@ -913,10 +1054,6 @@ local function updateGimbal(state)
 
     end
 
-
-    --------------------------------------------------
-    -- ANGULAR RATES
-    --------------------------------------------------
 
     if ratesOK
         and
@@ -949,19 +1086,15 @@ local function updateGimbal(state)
     end
 
 
-    --------------------------------------------------
-    -- GRAVITY
-    --------------------------------------------------
-
-    local okGravity,
-    gravity =
+    local ok,
+        gravity =
         safeCall(
             sensor,
             "getGravity"
         )
 
 
-    if okGravity
+    if ok
         and
         type(gravity) ==
         "table" then
@@ -1000,26 +1133,22 @@ local function updateGimbal(state)
     end
 
 
-    --------------------------------------------------
-    -- ACCELERATION
-    --------------------------------------------------
-
-    local okAcceleration,
-    acceleration =
+    ok,
+    localAcceleration =
         safeCall(
             sensor,
             "getLinearAcceleration"
         )
 
 
-    if okAcceleration
+    if ok
         and
-        type(acceleration) ==
+        type(localAcceleration) ==
         "table" then
 
         n.accelerationX =
             tonumber(
-                acceleration[1]
+                localAcceleration[1]
             )
             or
             0
@@ -1027,7 +1156,7 @@ local function updateGimbal(state)
 
         n.accelerationY =
             tonumber(
-                acceleration[2]
+                localAcceleration[2]
             )
             or
             0
@@ -1035,7 +1164,7 @@ local function updateGimbal(state)
 
         n.accelerationZ =
             tonumber(
-                acceleration[3]
+                localAcceleration[3]
             )
             or
             0
@@ -1046,24 +1175,30 @@ end
 
 
 --------------------------------------------------
--- VELOCITY
+-- VELOCITY SENSOR
 --------------------------------------------------
 
-local function updateVelocity(state)
+local function updateVelocity(
+    state
+)
 
     local sensor =
         findVelocitySensor()
 
+
     local n =
         state.navigation
 
+
     if not sensor then
+
         return
+
     end
 
 
     local ok,
-    value =
+        value =
         safeCall(
             sensor,
             "getVelocity"
@@ -1075,11 +1210,12 @@ local function updateVelocity(state)
         not isNumber(value) then
 
         return
+
     end
 
 
     local axisOK,
-    axis =
+        axis =
         safeCall(
             sensor,
             "getAxis"
@@ -1091,13 +1227,12 @@ local function updateVelocity(state)
         type(axis) ~= "string" then
 
         return
+
     end
 
 
     axis =
-        string.lower(
-            axis
-        )
+        string.lower(axis)
 
 
     n.velocitySensor =
@@ -1105,15 +1240,13 @@ local function updateVelocity(state)
 
 
     n.velocitySensorX =
-        false
-
+        axis == "x"
 
     n.velocitySensorY =
-        false
-
+        axis == "y"
 
     n.velocitySensorZ =
-        false
+        axis == "z"
 
 
     n.bodyVelocity.x = 0
@@ -1126,27 +1259,15 @@ local function updateVelocity(state)
         n.bodyVelocity.x =
             value
 
-        n.velocitySensorX =
-            true
-
-
     elseif axis == "y" then
 
         n.bodyVelocity.y =
             value
 
-        n.velocitySensorY =
-            true
-
-
     elseif axis == "z" then
 
         n.bodyVelocity.z =
             value
-
-        n.velocitySensorZ =
-            true
-
 
     else
 
@@ -1156,7 +1277,7 @@ local function updateVelocity(state)
 
 
     --------------------------------------------------
-    -- BODY → WORLD
+    -- BODY -> WORLD
     --------------------------------------------------
 
     local q =
@@ -1164,8 +1285,8 @@ local function updateVelocity(state)
 
 
     local vx,
-    vy,
-    vz =
+        vy,
+        vz =
         bodyToWorld(
             n.bodyVelocity.x,
             n.bodyVelocity.y,
@@ -1177,9 +1298,14 @@ local function updateVelocity(state)
         )
 
 
-    n.velocity.x = vx
-    n.velocity.y = vy
-    n.velocity.z = vz
+    n.velocity.x =
+        vx
+
+    n.velocity.y =
+        vy
+
+    n.velocity.z =
+        vz
 
 
     n.speed =
@@ -1196,10 +1322,13 @@ end
 -- TARGET VECTOR
 --------------------------------------------------
 
-local function updateTargetVector(state)
+local function updateTargetVector(
+    state
+)
 
     local n =
         state.navigation
+
 
     local target =
         state.target
@@ -1209,69 +1338,96 @@ local function updateTargetVector(state)
         or
         target.set ~= true then
 
-        n.hasNavTarget = false
+        n.hasNavTarget =
+            false
+
 
         n.targetDeltaX = 0
         n.targetDeltaY = 0
         n.targetDeltaZ = 0
 
+
         n.targetDistance = 0
+
 
         n.localTargetX = 0
         n.localTargetY = 0
         n.localTargetZ = 0
 
+
         n.targetYaw = 0
         n.targetPitch = 0
 
+
         return
+
     end
 
 
     --------------------------------------------------
-    -- WORLD TARGET VECTOR
+    -- CURRENT POSITION
+    --------------------------------------------------
+
+    local px =
+        tonumber(
+            n.position.x
+        )
+        or
+        0
+
+
+    local py =
+        tonumber(
+            n.position.y
+        )
+        or
+        0
+
+
+    local pz =
+        tonumber(
+            n.position.z
+        )
+        or
+        0
+
+
+    --------------------------------------------------
+    -- TARGET
+    --------------------------------------------------
+
+    local tx =
+        tonumber(target.x)
+        or
+        0
+
+
+    local ty =
+        tonumber(target.y)
+        or
+        0
+
+
+    local tz =
+        tonumber(target.z)
+        or
+        0
+
+
+    --------------------------------------------------
+    -- VECTOR
     --------------------------------------------------
 
     local dx =
-        (
-            tonumber(target.x)
-            or
-            0
-        )
-        -
-        (
-            tonumber(n.position.x)
-            or
-            0
-        )
+        tx - px
 
 
     local dy =
-        (
-            tonumber(target.y)
-            or
-            0
-        )
-        -
-        (
-            tonumber(n.position.y)
-            or
-            0
-        )
+        ty - py
 
 
     local dz =
-        (
-            tonumber(target.z)
-            or
-            0
-        )
-        -
-        (
-            tonumber(n.position.z)
-            or
-            0
-        )
+        tz - pz
 
 
     local distance =
@@ -1282,9 +1438,17 @@ local function updateTargetVector(state)
         )
 
 
-    n.targetDeltaX = dx
-    n.targetDeltaY = dy
-    n.targetDeltaZ = dz
+    n.targetDeltaX =
+        dx
+
+
+    n.targetDeltaY =
+        dy
+
+
+    n.targetDeltaZ =
+        dz
+
 
     n.targetDistance =
         distance
@@ -1295,25 +1459,7 @@ local function updateTargetVector(state)
 
 
     --------------------------------------------------
-    -- NORMALIZED TARGET
-    --------------------------------------------------
-
-    local tx,
-    ty,
-    tz =
-        normalize(
-            dx,
-            dy,
-            dz
-        )
-
-
-    --------------------------------------------------
-    -- WORLD → BODY
-    --
-    -- This is DIAGNOSTIC ONLY.
-    -- Guidance does NOT use the old local-angle
-    -- calculation anymore.
+    -- BODY FRAME
     --------------------------------------------------
 
     local q =
@@ -1321,8 +1467,8 @@ local function updateTargetVector(state)
 
 
     local lx,
-    ly,
-    lz =
+        ly,
+        lz =
         worldToBody(
             dx,
             dy,
@@ -1332,6 +1478,24 @@ local function updateTargetVector(state)
             q.z,
             q.w
         )
+
+
+    --------------------------------------------------
+    -- IMPORTANT:
+    -- The physical missile forward is -table Z,
+    -- so invert the table-frame Z axis.
+    --------------------------------------------------
+
+    lx =
+        -lx
+
+
+    ly =
+        ly
+
+
+    lz =
+        -lz
 
 
     lx,
@@ -1357,38 +1521,33 @@ local function updateTargetVector(state)
 
 
     --------------------------------------------------
-    -- TARGET ANGLE FROM WORLD TARGET VECTOR
+    -- TARGET YAW
     --
-    -- Diagnostic values only.
+    -- Rocket forward = +local Z after the above
+    -- transformation.
+    --------------------------------------------------
+
+    n.targetYaw =
+        math.atan(
+            lx,
+            lz
+        )
+
+
+    --------------------------------------------------
+    -- TARGET PITCH
     --------------------------------------------------
 
     local horizontal =
         math.sqrt(
-            tx * tx +
-            tz * tz
+            lx * lx +
+            lz * lz
         )
-
-
-    if horizontal >
-        0.000001 then
-
-        n.targetYaw =
-            math.atan(
-                tx,
-                tz
-            )
-
-    else
-
-        n.targetYaw =
-            0
-
-    end
 
 
     n.targetPitch =
         math.atan(
-            ty,
+            ly,
             horizontal
         )
 
@@ -1418,7 +1577,7 @@ local function updatePosition(
 
 
     --------------------------------------------------
-    -- X
+    -- X/Z FROM VELOCITY
     --------------------------------------------------
 
     n.position.x =
@@ -1433,10 +1592,6 @@ local function updatePosition(
         dt
 
 
-    --------------------------------------------------
-    -- Z
-    --------------------------------------------------
-
     n.position.z =
         n.position.z +
         (
@@ -1450,7 +1605,7 @@ local function updatePosition(
 
 
     --------------------------------------------------
-    -- Y comes directly from Altitude Sensor.
+    -- Y FROM ALTITUDE SENSOR
     --------------------------------------------------
 
     if n.altitudeSensor then
@@ -1470,10 +1625,12 @@ end
 
 
 --------------------------------------------------
--- OVERALL STATUS
+-- STATUS
 --------------------------------------------------
 
-local function updateStatus(state)
+local function updateStatus(
+    state
+)
 
     local n =
         state.navigation
@@ -1490,6 +1647,7 @@ local function updateStatus(state)
         n.online =
             true
 
+
         n.status =
             "ONLINE"
 
@@ -1505,6 +1663,7 @@ local function updateStatus(state)
         n.online =
             true
 
+
         n.status =
             "PARTIAL"
 
@@ -1513,6 +1672,7 @@ local function updateStatus(state)
 
         n.online =
             false
+
 
         n.status =
             "OFFLINE"
@@ -1526,7 +1686,9 @@ end
 -- MAIN
 --------------------------------------------------
 
-local function run(state)
+local function run(
+    state
+)
 
     initializeState(
         state
@@ -1534,7 +1696,7 @@ local function run(state)
 
 
     --------------------------------------------------
-    -- LOAD START BEFORE FIRST CALCULATION
+    -- LOAD X/Z START POSITION
     --------------------------------------------------
 
     loadStartFile(
@@ -1543,7 +1705,7 @@ local function run(state)
 
 
     --------------------------------------------------
-    -- INITIAL POSITION
+    -- INITIAL X/Z
     --------------------------------------------------
 
     if type(
@@ -1561,14 +1723,6 @@ local function run(state)
             0
 
 
-        state.navigation.position.y =
-            tonumber(
-                state.startPosition.y
-            )
-            or
-            0
-
-
         state.navigation.position.z =
             tonumber(
                 state.startPosition.z
@@ -1580,7 +1734,42 @@ local function run(state)
 
 
     --------------------------------------------------
-    -- LOOP
+    -- INITIAL Y FROM SENSOR
+    --------------------------------------------------
+
+    local altitudeSensor =
+        findFirstType(
+            "altitude_sensor"
+        )
+
+
+    if altitudeSensor then
+
+        local ok,
+            altitude =
+            safeCall(
+                altitudeSensor,
+                "getHeight"
+            )
+
+
+        if ok
+            and
+            isNumber(altitude) then
+
+            state.navigation.altitude =
+                altitude
+
+            state.navigation.position.y =
+                altitude
+
+        end
+
+    end
+
+
+    --------------------------------------------------
+    -- MAIN LOOP
     --------------------------------------------------
 
     local previousTime =
@@ -1592,17 +1781,37 @@ local function run(state)
         state.system.running do
 
 
-        --------------------------------------------------
-        -- RESET DEVICE STATUS
-        --------------------------------------------------
-
         resetSignals(
             state
         )
 
 
         --------------------------------------------------
-        -- DT
+        -- CURRENT DEVICES
+        --------------------------------------------------
+
+        updateNavigationTable(
+            state
+        )
+
+
+        updateAltitude(
+            state
+        )
+
+
+        updateGimbal(
+            state
+        )
+
+
+        updateVelocity(
+            state
+        )
+
+
+        --------------------------------------------------
+        -- TIME
         --------------------------------------------------
 
         local now =
@@ -1629,30 +1838,6 @@ local function run(state)
 
 
         --------------------------------------------------
-        -- DEVICES
-        --------------------------------------------------
-
-        updateNavigationTable(
-            state
-        )
-
-
-        updateAltitude(
-            state
-        )
-
-
-        updateGimbal(
-            state
-        )
-
-
-        updateVelocity(
-            state
-        )
-
-
-        --------------------------------------------------
         -- POSITION
         --------------------------------------------------
 
@@ -1663,7 +1848,7 @@ local function run(state)
 
 
         --------------------------------------------------
-        -- TARGET
+        -- MANUAL TARGET
         --------------------------------------------------
 
         updateTargetVector(
@@ -1719,10 +1904,6 @@ local function run(state)
 
 end
 
-
---------------------------------------------------
--- EXPORT
---------------------------------------------------
 
 return {
     run = run
