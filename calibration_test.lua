@@ -55,9 +55,9 @@
 -- SETTINGS
 --------------------------------------------------
 
-local TEST_POWER = 0.03
+local TEST_POWER = 0.30
 
-local PULSE_TIME = 0.80
+local PULSE_TIME = 0.50
 
 local SETTLE_TIME = 0.70
 
@@ -1450,10 +1450,10 @@ center()
 -- TEST +X
 --------------------------------------------------
 
-local result =
+result =
     runTest(
         "+X",
-        0.20,
+        0.05,
         0
     )
 
@@ -1480,7 +1480,7 @@ sleep(
 result =
     runTest(
         "-X",
-        -0.20,
+        -0.05,
         0
     )
 
@@ -1508,7 +1508,7 @@ result =
     runTest(
         "+Y",
         0,
-        0.20
+        0.05
     )
 
 
@@ -1535,7 +1535,7 @@ result =
     runTest(
         "-Y",
         0,
-        -0.20
+        -0.05
     )
 
 
