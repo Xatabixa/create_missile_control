@@ -1,82 +1,108 @@
 -- Missile Flight Scenario Manager
--- Height-based flight profile
--- No require()
+-- CC:Tweaked
+--
+-- Flight phases:
+--
+--   READY
+--      |
+--      v
+--   BOOST
+--      |
+--      | altitude >= 100
+--      v
+--   PITCH OVER
+--      |
+--      | altitude >= 300
+--      v
+--   CRUISE
+--      |
+--      | distance <= 500
+--      v
+--   TERMINAL
+--      |
+--      | distance <= 5
+--      v
+--   IMPACT
+--
+-- Conservative-but-useful steering limits:
+--
+--   BOOST       0.000
+--   PITCH OVER  0.050
+--   CRUISE      0.100
+--   TERMINAL    0.250
 
 --------------------------------------------------
--- FLIGHT PROFILE
+-- PROFILE
 --------------------------------------------------
 
--- Vertical boost ends at this altitude.
-local BOOST_ALTITUDE = 100.0
+local BOOST_ALTITUDE =
+    100.0
 
--- Pitch-over phase ends at this altitude.
-local CRUISE_ALTITUDE = 300.0
 
--- Terminal guidance starts at this distance.
-local TERMINAL_DISTANCE = 500.0
+local CRUISE_ALTITUDE =
+    300.0
 
--- Target is considered reached at this distance.
-local IMPACT_DISTANCE = 5.0
+
+local TERMINAL_DISTANCE =
+    500.0
+
+
+local IMPACT_DISTANCE =
+    5.0
 
 
 --------------------------------------------------
 -- PITCH OVER
 --------------------------------------------------
 
--- Minimum amount of time spent in pitch-over.
---
--- This prevents switching immediately from BOOST
--- to CRUISE due to a noisy altitude measurement.
-
-local MIN_PITCH_OVER_TIME = 3.0
+local MIN_PITCH_OVER_TIME =
+    3.0
 
 
 --------------------------------------------------
--- GUIDANCE VECTOR LIMITS
---
--- Conservative values for the second flight.
---
--- BOOST:
---   no vector steering
---
--- PITCH OVER:
---   very small steering authority
---
--- CRUISE:
---   limited steering authority
---
--- TERMINAL:
---   still deliberately conservative
+-- VECTOR LIMITS
 --------------------------------------------------
 
-local BOOST_VECTOR_LIMIT = 0.000
+local BOOST_VECTOR_LIMIT =
+    0.000
 
-local PITCH_OVER_VECTOR_LIMIT = 0.020
 
-local CRUISE_VECTOR_LIMIT = 0.035
+local PITCH_OVER_VECTOR_LIMIT =
+    0.050
 
-local TERMINAL_VECTOR_LIMIT = 0.060
+
+local CRUISE_VECTOR_LIMIT =
+    0.100
+
+
+local TERMINAL_VECTOR_LIMIT =
+    0.250
 
 
 --------------------------------------------------
 -- UPDATE
 --------------------------------------------------
 
-local UPDATE_INTERVAL = 0.05
+local UPDATE_INTERVAL =
+    0.05
 
 
 --------------------------------------------------
 -- MAIN
 --------------------------------------------------
 
-local function run(state)
+local function run(
+    state
+)
 
     --------------------------------------------------
-    -- CREATE STATE
+    -- STATE
     --------------------------------------------------
 
     state.flight =
-        state.flight or {}
+        state.flight
+        or
+        {}
 
 
     state.flight.online =
@@ -182,7 +208,7 @@ local function run(state)
 
 
     --------------------------------------------------
-    -- START FLIGHT
+    -- START
     --------------------------------------------------
 
     local function startFlight()
@@ -248,8 +274,9 @@ local function run(state)
 
     local function getDistance()
 
-        if type(state.target) ~=
-            "table" then
+        if type(
+            state.target
+        ) ~= "table" then
 
             return nil
 
@@ -264,8 +291,9 @@ local function run(state)
         end
 
 
-        if type(state.navigation) ~=
-            "table" then
+        if type(
+            state.navigation
+        ) ~= "table" then
 
             return nil
 
@@ -313,8 +341,9 @@ local function run(state)
 
     local function getAltitude()
 
-        if type(state.navigation) ~=
-            "table" then
+        if type(
+            state.navigation
+        ) ~= "table" then
 
             return nil
 
@@ -371,14 +400,15 @@ local function run(state)
 
 
     --------------------------------------------------
-    -- TARGET VALIDATION
+    -- TARGET AVAILABLE
     --------------------------------------------------
 
     local function targetAvailable()
 
         return
-            type(state.target) ==
-                "table"
+            type(
+                state.target
+            ) == "table"
             and
             state.target.set == true
 
@@ -423,7 +453,7 @@ local function run(state)
 
 
         --------------------------------------------------
-        -- TARGET DISTANCE
+        -- DISTANCE
         --------------------------------------------------
 
         local distance =
@@ -437,8 +467,6 @@ local function run(state)
         if targetAvailable()
             and
             distance
-            and
-            distance > 0
             and
             distance <=
             IMPACT_DISTANCE then
@@ -455,17 +483,13 @@ local function run(state)
                 false
 
 
+            state.system.controlEnabled =
+                false
+
+
             setPhase(
                 "IMPACT"
             )
-
-
-            --------------------------------------------------
-            -- Disable control after target is reached.
-            --------------------------------------------------
-
-            state.system.controlEnabled =
-                false
 
 
             return
@@ -487,11 +511,6 @@ local function run(state)
 
         if state.flight.phase ==
             "BOOST" then
-
-            --------------------------------------------------
-            -- Stay in BOOST until the desired altitude
-            -- is actually reached.
-            --------------------------------------------------
 
             if altitude
                 and
@@ -517,10 +536,6 @@ local function run(state)
         if state.flight.phase ==
             "PITCH OVER" then
 
-            --------------------------------------------------
-            -- Wait for minimum pitch-over time.
-            --------------------------------------------------
-
             if state.flight.phaseElapsed <
                 MIN_PITCH_OVER_TIME then
 
@@ -528,10 +543,6 @@ local function run(state)
 
             end
 
-
-            --------------------------------------------------
-            -- Continue pitch-over until cruise altitude.
-            --------------------------------------------------
 
             if altitude
                 and
@@ -557,14 +568,7 @@ local function run(state)
         if state.flight.phase ==
             "CRUISE" then
 
-            --------------------------------------------------
-            -- Start terminal phase when approaching target.
-            --------------------------------------------------
-
             if distance
-                and
-                distance >
-                IMPACT_DISTANCE
                 and
                 distance <=
                 TERMINAL_DISTANCE then
@@ -609,36 +613,10 @@ local function run(state)
 
     local function publish()
 
-        --------------------------------------------------
-        -- PHASE FLAGS
-        --------------------------------------------------
-
-        state.flight.boost =
-            state.flight.phase ==
-            "BOOST"
-
-
-        state.flight.pitchOver =
-            state.flight.phase ==
-            "PITCH OVER"
-
-
-        state.flight.cruise =
-            state.flight.phase ==
-            "CRUISE"
-
-
-        state.flight.terminal =
-            state.flight.phase ==
-            "TERMINAL"
-
-
-        --------------------------------------------------
-        -- GUIDANCE DATA
-        --------------------------------------------------
-
         state.guidance =
-            state.guidance or {}
+            state.guidance
+            or
+            {}
 
 
         state.guidance.flightPhase =
@@ -653,26 +631,6 @@ local function run(state)
             state.flight.phaseElapsed
 
 
-        state.guidance.boostMode =
-            state.flight.boost
-
-
-        state.guidance.pitchOverMode =
-            state.flight.pitchOver
-
-
-        state.guidance.cruiseMode =
-            state.flight.cruise
-
-
-        state.guidance.terminalMode =
-            state.flight.terminal
-
-
-        --------------------------------------------------
-        -- ALTITUDE / DISTANCE
-        --------------------------------------------------
-
         state.flight.altitude =
             getAltitude()
 
@@ -682,10 +640,7 @@ local function run(state)
 
 
         --------------------------------------------------
-        -- CONSERVATIVE VECTOR LIMITS
-        --
-        -- This is the value Guidance and Actuator
-        -- will see during the current phase.
+        -- VECTOR LIMIT
         --------------------------------------------------
 
         if state.flight.phase ==
@@ -725,7 +680,7 @@ local function run(state)
 
 
         --------------------------------------------------
-        -- PROFILE LIMITS
+        -- PROFILE INFO
         --------------------------------------------------
 
         state.guidance.boostAltitude =
@@ -760,7 +715,7 @@ local function run(state)
 
 
         --------------------------------------------------
-        -- CONTROL JUST ENABLED
+        -- START ON CONTROL
         --------------------------------------------------
 
         if control
@@ -796,7 +751,7 @@ local function run(state)
 
 
         --------------------------------------------------
-        -- CLEAR PHASE FLAG
+        -- RESET PHASE CHANGE
         --------------------------------------------------
 
         state.flight.phaseChanged =
@@ -804,7 +759,7 @@ local function run(state)
 
 
         --------------------------------------------------
-        -- UPDATE PHASE
+        -- PHASE
         --------------------------------------------------
 
         updatePhase()
@@ -818,7 +773,7 @@ local function run(state)
 
 
         --------------------------------------------------
-        -- PHASE CHANGE DETECTION
+        -- DETECT PHASE CHANGE
         --------------------------------------------------
 
         if previousPhase ~=
@@ -835,7 +790,7 @@ local function run(state)
 
 
         --------------------------------------------------
-        -- SYSTEM STATUS
+        -- STATUS
         --------------------------------------------------
 
         if state.flight.phase ==
@@ -889,10 +844,6 @@ local function run(state)
         end
 
 
-        --------------------------------------------------
-        -- SYSTEM MODE
-        --------------------------------------------------
-
         if state.flight.active then
 
             state.system.mode =
@@ -925,7 +876,9 @@ local function run(state)
 
 
     state.guidance =
-        state.guidance or {}
+        state.guidance
+        or
+        {}
 
 
     state.guidance.flightMaxVector =
