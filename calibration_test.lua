@@ -1,45 +1,48 @@
--- Missile Control Axis Calibration v2
+-- Missile Control Axis Calibration v3
 -- CC:Tweaked
 --
 -- PURPOSE:
---   Determine the dynamic response of the rocket to
---   vector commands by measuring ANGULAR VELOCITY
---   during the thrust pulse.
---
--- REAL APIs:
---
--- Liquid Vector Thruster:
---   setVector()
---   setPowerNormalized()
---   getVectorX()
---   getVectorY()
---
--- Gimbal Sensor:
---   getAnglesRad()
---   getAngularRatesRad()
+--   Determine the dynamic response of the rocket
+--   to vector commands using Gimbal Sensor.
 --
 -- IMPORTANT:
 --   DO NOT run launcher.lua at the same time.
 --   actuator.lua must NOT be running.
 --
---   Rocket must be UNFROZEN during the pulse.
+--   Rocket must be UNFROZEN during the test pulse.
 --
--- TESTS:
+-- TEST:
 --   +X
 --   -X
 --   +Y
 --   -Y
 --
--- TEST SETTINGS:
---   vector = +/-0.05
---   power  = 0.30
---   pulse  = 0.50 s
+-- POWER:
+--   X axis = 0.10
+--   Y axis = 0.20
 --
--- The test samples angular rates every 0.02 s
--- and finds the strongest signed response.
+-- VECTOR:
+--   +/-0.05
+--
+-- PULSE:
+--   2.0 seconds
+--
+-- SAMPLE:
+--   every 0.05 seconds
+--
+-- SETTLE:
+--   3.0 seconds between tests
+--
+-- The program records:
+--   - baseline angular rate
+--   - every angular-rate sample
+--   - peak rate delta
+--   - average rate delta during second half
+--   - strongest axis
+--   - sign
 --
 -- CONTROLS AFTER TEST:
---   UP / DOWN      scroll
+--   UP / DOWN     scroll
 --   PAGEUP        fast up
 --   PAGEDOWN      fast down
 --   HOME          top
@@ -47,9 +50,12 @@
 --   R             redraw
 --   Q             exit
 --
--- FINAL SAFETY:
---   vector = 0,0
---   power = 0
+-- SAFETY:
+--   Every test ends with:
+--      vector = 0,0
+--      power  = 0
+--
+--   No actuator.lua is used.
 
 --------------------------------------------------
 -- SETTINGS
@@ -57,25 +63,21 @@
 
 local TEST_VECTOR = 0.05
 
-local TEST_POWER = 0.30
+local X_POWER = 0.10
+local Y_POWER = 0.20
 
-local PULSE_TIME = 0.50
-
-local SAMPLE_TIME = 0.02
-
-local SETTLE_TIME = 1.00
-
-local BETWEEN_TESTS = 1.50
-
+local PULSE_TIME = 2.0
+local SAMPLE_TIME = 0.05
+local SETTLE_TIME = 3.0
+local AFTER_STOP_TIME = 0.20
 
 --------------------------------------------------
--- PERIPHERALS
+-- DEVICES
 --------------------------------------------------
 
 local thrusters = {}
 
 local gimbal = nil
-
 
 --------------------------------------------------
 -- RESULTS
@@ -86,7 +88,6 @@ local results = {}
 local reportLines = {}
 
 local scroll = 0
-
 
 --------------------------------------------------
 -- SAFE CALL
@@ -99,18 +100,19 @@ local function safeCall(
 )
 
     if not device then
-        return false, nil
-    end
 
+        return false, nil
+
+    end
 
     local fn =
         device[method]
 
-
     if type(fn) ~= "function" then
-        return false, nil
-    end
 
+        return false, nil
+
+    end
 
     local ok,
         a,
@@ -122,11 +124,11 @@ local function safeCall(
             ...
         )
 
-
     if not ok then
-        return false, nil
-    end
 
+        return false, nil
+
+    end
 
     return true,
         a,
@@ -136,7 +138,6 @@ local function safeCall(
 
 end
 
-
 --------------------------------------------------
 -- FIND THRUSTERS
 --------------------------------------------------
@@ -144,7 +145,6 @@ end
 local function scanThrusters()
 
     thrusters = {}
-
 
     for _, name in ipairs(
         peripheral.getNames()
@@ -155,14 +155,14 @@ local function scanThrusters()
                 name
             )
 
-
         if type(methods) ==
             "table" then
 
-            local hasVector = false
+            local hasVector =
+                false
 
-            local hasPower = false
-
+            local hasPower =
+                false
 
             for _, method in ipairs(
                 methods
@@ -171,17 +171,18 @@ local function scanThrusters()
                 if method ==
                     "setVector" then
 
-                    hasVector = true
+                    hasVector =
+                        true
 
                 elseif method ==
                     "setPowerNormalized" then
 
-                    hasPower = true
+                    hasPower =
+                        true
 
                 end
 
             end
-
 
             if hasVector
                 and
@@ -191,7 +192,6 @@ local function scanThrusters()
                     peripheral.wrap(
                         name
                     )
-
 
                 if device then
 
@@ -213,7 +213,6 @@ local function scanThrusters()
 
 end
 
-
 --------------------------------------------------
 -- FIND GIMBAL
 --------------------------------------------------
@@ -221,7 +220,6 @@ end
 local function scanGimbal()
 
     gimbal = nil
-
 
     for _, name in ipairs(
         peripheral.getNames()
@@ -236,7 +234,6 @@ local function scanGimbal()
                 peripheral.wrap(
                     name
                 )
-
 
             if device then
 
@@ -253,9 +250,8 @@ local function scanGimbal()
 
 end
 
-
 --------------------------------------------------
--- NUMBER FORMAT
+-- FORMAT
 --------------------------------------------------
 
 local function fmt(
@@ -266,11 +262,11 @@ local function fmt(
     value =
         tonumber(value)
 
-
     if not value then
-        return "---"
-    end
 
+        return "---"
+
+    end
 
     return string.format(
         "%." ..
@@ -283,61 +279,41 @@ local function fmt(
 
 end
 
-
 --------------------------------------------------
--- DEGREE FORMAT
+-- DEG/S
 --------------------------------------------------
 
-local function deg(
+local function degPerSecond(
     value
 )
 
     value =
         tonumber(value)
 
-
     if not value then
+
         return "---"
+
     end
 
-
     return string.format(
-        "%.5f",
+        "%.6f",
         math.deg(value)
     )
 
 end
 
-
 --------------------------------------------------
--- VECTOR MAGNITUDE
---------------------------------------------------
-
-local function magnitude(
-    x,
-    y,
-    z
-)
-
-    return math.sqrt(
-        x * x +
-        y * y +
-        z * z
-    )
-
-end
-
-
---------------------------------------------------
--- READ ANGULAR RATE
+-- READ RATES
 --------------------------------------------------
 
 local function readRates()
 
     if not gimbal then
-        return nil
-    end
 
+        return nil
+
+    end
 
     local ok,
         values =
@@ -346,7 +322,6 @@ local function readRates()
             "getAngularRatesRad"
         )
 
-
     if not ok
         or
         type(values) ~= "table" then
@@ -354,7 +329,6 @@ local function readRates()
         return nil
 
     end
-
 
     return {
 
@@ -376,7 +350,6 @@ local function readRates()
     }
 
 end
-
 
 --------------------------------------------------
 -- READ ANGLES
@@ -385,9 +358,10 @@ end
 local function readAngles()
 
     if not gimbal then
-        return nil
-    end
 
+        return nil
+
+    end
 
     local ok,
         values =
@@ -396,7 +370,6 @@ local function readAngles()
             "getAnglesRad"
         )
 
-
     if not ok
         or
         type(values) ~= "table" then
@@ -404,7 +377,6 @@ local function readAngles()
         return nil
 
     end
-
 
     return {
 
@@ -427,9 +399,8 @@ local function readAngles()
 
 end
 
-
 --------------------------------------------------
--- SET ALL VECTORS
+-- SET VECTOR
 --------------------------------------------------
 
 local function setAllVector(
@@ -451,9 +422,8 @@ local function setAllVector(
 
 end
 
-
 --------------------------------------------------
--- SET ALL POWER
+-- SET POWER
 --------------------------------------------------
 
 local function setAllPower(
@@ -473,9 +443,8 @@ local function setAllPower(
 
 end
 
-
 --------------------------------------------------
--- EMERGENCY STOP
+-- STOP
 --------------------------------------------------
 
 local function stopAll()
@@ -485,16 +454,14 @@ local function stopAll()
         0
     )
 
-
     setAllPower(
         0
     )
 
 end
 
-
 --------------------------------------------------
--- WAIT SETTLE
+-- SETTLE
 --------------------------------------------------
 
 local function settle()
@@ -507,69 +474,121 @@ local function settle()
 
 end
 
-
 --------------------------------------------------
--- INITIALIZE BASELINE
+-- AVERAGE
 --------------------------------------------------
 
-local function getBaseline()
+local function average(
+    values,
+    key
+)
 
-    local rates =
-        readRates()
+    if #values == 0 then
 
-
-    local angles =
-        readAngles()
-
-
-    if not rates then
-
-        return nil, nil
+        return 0
 
     end
 
+    local sum = 0
 
-    return rates, angles
+    for _, value in ipairs(
+        values
+    ) do
+
+        sum =
+            sum +
+            value[key]
+
+    end
+
+    return
+        sum /
+        #values
 
 end
 
+--------------------------------------------------
+-- FIND STRONGEST
+--------------------------------------------------
+
+local function strongestAxis(
+    value
+)
+
+    local ax =
+        math.abs(value.x)
+
+    local ay =
+        math.abs(value.y)
+
+    local az =
+        math.abs(value.z)
+
+    if ax >= ay
+        and
+        ax >= az then
+
+        return "X",
+            value.x
+
+    elseif ay >= ax
+        and
+        ay >= az then
+
+        return "Y",
+            value.y
+
+    else
+
+        return "Z",
+            value.z
+
+    end
+
+end
 
 --------------------------------------------------
--- RUN ONE DYNAMIC TEST
+-- RUN TEST
 --------------------------------------------------
 
 local function runTest(
     label,
     commandX,
-    commandY
+    commandY,
+    power
 )
 
     print("")
     print(
         "================================"
     )
+
     print(
-        "TEST " .. label
+        "TEST " ..
+        label
     )
+
     print(
         "VECTOR X=" ..
         tostring(commandX) ..
         " Y=" ..
         tostring(commandY)
     )
+
     print(
         "POWER=" ..
-        tostring(TEST_POWER)
+        tostring(power)
     )
+
     print(
         "PULSE=" ..
         tostring(PULSE_TIME) ..
         " s"
     )
+
     print(
         "================================"
     )
-
 
     --------------------------------------------------
     -- RESET
@@ -577,91 +596,39 @@ local function runTest(
 
     settle()
 
-
     --------------------------------------------------
     -- BASELINE
     --------------------------------------------------
 
-    local baselineRates,
-        baselineAngles =
-        getBaseline()
+    local baseline =
+        readRates()
 
+    local baselineAngles =
+        readAngles()
 
-    if not baselineRates then
+    if not baseline then
 
         print(
-            "ERROR: Gimbal rate unavailable"
+            "ERROR: Gimbal Sensor unavailable"
         )
 
-
         stopAll()
-
 
         return nil
 
     end
 
-
     --------------------------------------------------
-    -- PEAK DATA
+    -- STORAGE
     --------------------------------------------------
 
-    local peak = {
-
-        x = 0,
-        y = 0,
-        z = 0
-
-    }
-
-
-    local peakAbs = {
-
-        x = 0,
-        y = 0,
-        z = 0
-
-    }
-
-
-    local peakTime = {
-
-        x = 0,
-        y = 0,
-        z = 0
-
-    }
-
-
-    local peakAngles = {
-
-        x = baselineAngles
-            and
-            baselineAngles.x
-            or
-            0,
-
-        y = baselineAngles
-            and
-            baselineAngles.y
-            or
-            0,
-
-        z = baselineAngles
-            and
-            baselineAngles.z
-            or
-            0
-
-    }
-
-
-    local sampleCount = 0
-
+    local samples = {}
 
     local startTime =
         os.clock()
 
+    local secondHalfStart =
+        PULSE_TIME / 2
 
     --------------------------------------------------
     -- VECTOR FIRST
@@ -672,15 +639,13 @@ local function runTest(
         commandY
     )
 
-
     --------------------------------------------------
     -- POWER SECOND
     --------------------------------------------------
 
     setAllPower(
-        TEST_POWER
+        power
     )
-
 
     --------------------------------------------------
     -- SAMPLE LOOP
@@ -692,7 +657,6 @@ local function runTest(
             os.clock() -
             startTime
 
-
         if elapsed >=
             PULSE_TIME then
 
@@ -700,122 +664,82 @@ local function runTest(
 
         end
 
-
         local rates =
             readRates()
-
 
         local angles =
             readAngles()
 
-
         if rates then
 
-            sampleCount =
-                sampleCount + 1
+            table.insert(
+                samples,
+                {
+                    time = elapsed,
 
+                    x =
+                        rates.x -
+                        baseline.x,
 
-            --------------------------------------------------
-            -- DELTA FROM BASELINE
-            --------------------------------------------------
+                    y =
+                        rates.y -
+                        baseline.y,
 
-            local dx =
-                rates.x -
-                baselineRates.x
+                    z =
+                        rates.z -
+                        baseline.z,
 
+                    angleX =
+                        angles
+                        and
+                        (
+                            angles.x -
+                            (
+                                baselineAngles
+                                and
+                                baselineAngles.x
+                                or
+                                0
+                            )
+                        )
+                        or
+                        0,
 
-            local dy =
-                rates.y -
-                baselineRates.y
+                    angleY =
+                        angles
+                        and
+                        (
+                            angles.y -
+                            (
+                                baselineAngles
+                                and
+                                baselineAngles.y
+                                or
+                                0
+                            )
+                        )
+                        or
+                        0,
 
-
-            local dz =
-                rates.z -
-                baselineRates.z
-
-
-            --------------------------------------------------
-            -- PEAK X
-            --------------------------------------------------
-
-            if math.abs(dx) >
-                peakAbs.x then
-
-                peakAbs.x =
-                    math.abs(dx)
-
-                peak.x =
-                    dx
-
-                peakTime.x =
-                    elapsed
-
-
-                if angles then
-
-                    peakAngles.x =
-                        angles.x
-
-                end
-
-            end
-
-
-            --------------------------------------------------
-            -- PEAK Y
-            --------------------------------------------------
-
-            if math.abs(dy) >
-                peakAbs.y then
-
-                peakAbs.y =
-                    math.abs(dy)
-
-                peak.y =
-                    dy
-
-                peakTime.y =
-                    elapsed
-
-
-                if angles then
-
-                    peakAngles.y =
-                        angles.y
-
-                end
-
-            end
-
-
-            --------------------------------------------------
-            -- PEAK Z
-            --------------------------------------------------
-
-            if math.abs(dz) >
-                peakAbs.z then
-
-                peakAbs.z =
-                    math.abs(dz)
-
-                peak.z =
-                    dz
-
-                peakTime.z =
-                    elapsed
-
-
-                if angles then
-
-                    peakAngles.z =
-                        angles.z
-
-                end
-
-            end
+                    angleZ =
+                        angles
+                        and
+                        (
+                            angles.z -
+                            (
+                                baselineAngles
+                                and
+                                baselineAngles.z
+                                or
+                                0
+                            )
+                        )
+                        or
+                        0
+                }
+            )
 
         end
-
 
         sleep(
             SAMPLE_TIME
@@ -823,88 +747,248 @@ local function runTest(
 
     end
 
-
     --------------------------------------------------
-    -- STOP
+    -- STOP IMMEDIATELY
     --------------------------------------------------
 
     stopAll()
 
+    sleep(
+        AFTER_STOP_TIME
+    )
+
+    --------------------------------------------------
+    -- SEPARATE SECOND HALF
+    --------------------------------------------------
+
+    local secondHalf = {}
+
+    for _, sample in ipairs(
+        samples
+    ) do
+
+        if sample.time >=
+            secondHalfStart then
+
+            table.insert(
+                secondHalf,
+                sample
+            )
+
+        end
+
+    end
+
+    --------------------------------------------------
+    -- PEAK
+    --------------------------------------------------
+
+    local peak = {
+
+        x = 0,
+        y = 0,
+        z = 0
+
+    }
+
+    local peakTime = {
+
+        x = 0,
+        y = 0,
+        z = 0
+
+    }
+
+    --------------------------------------------------
+    -- PROCESS PEAK
+    --------------------------------------------------
+
+    for _, sample in ipairs(
+        samples
+    ) do
+
+        if math.abs(sample.x) >
+            math.abs(peak.x) then
+
+            peak.x =
+                sample.x
+
+            peakTime.x =
+                sample.time
+
+        end
+
+        if math.abs(sample.y) >
+            math.abs(peak.y) then
+
+            peak.y =
+                sample.y
+
+            peakTime.y =
+                sample.time
+
+        end
+
+        if math.abs(sample.z) >
+            math.abs(peak.z) then
+
+            peak.z =
+                sample.z
+
+            peakTime.z =
+                sample.time
+
+        end
+
+    end
+
+    --------------------------------------------------
+    -- AVERAGE RATE
+    --------------------------------------------------
+
+    local avg = {
+
+        x =
+            average(
+                secondHalf,
+                "x"
+            ),
+
+        y =
+            average(
+                secondHalf,
+                "y"
+            ),
+
+        z =
+            average(
+                secondHalf,
+                "z"
+            )
+
+    }
+
+    --------------------------------------------------
+    -- AVERAGE ABSOLUTE RATE
+    --------------------------------------------------
+
+    local avgAbs = {
+
+        x = 0,
+        y = 0,
+        z = 0
+
+    }
+
+    for _, sample in ipairs(
+        secondHalf
+    ) do
+
+        avgAbs.x =
+            avgAbs.x +
+            math.abs(
+                sample.x
+            )
+
+        avgAbs.y =
+            avgAbs.y +
+            math.abs(
+                sample.y
+            )
+
+        avgAbs.z =
+            avgAbs.z +
+            math.abs(
+                sample.z
+            )
+
+    end
+
+    if #secondHalf > 0 then
+
+        avgAbs.x =
+            avgAbs.x /
+            #secondHalf
+
+        avgAbs.y =
+            avgAbs.y /
+            #secondHalf
+
+        avgAbs.z =
+            avgAbs.z /
+            #secondHalf
+
+    end
+
+    --------------------------------------------------
+    -- AVERAGE ANGLE CHANGE
+    --------------------------------------------------
+
+    local angleAverage = {
+
+        x = 0,
+        y = 0,
+        z = 0
+
+    }
+
+    if #secondHalf > 0 then
+
+        for _, sample in ipairs(
+            secondHalf
+        ) do
+
+            angleAverage.x =
+                angleAverage.x +
+                sample.angleX
+
+            angleAverage.y =
+                angleAverage.y +
+                sample.angleY
+
+            angleAverage.z =
+                angleAverage.z +
+                sample.angleZ
+
+        end
+
+        angleAverage.x =
+            angleAverage.x /
+            #secondHalf
+
+        angleAverage.y =
+            angleAverage.y /
+            #secondHalf
+
+        angleAverage.z =
+            angleAverage.z /
+            #secondHalf
+
+    end
+
+    --------------------------------------------------
+    -- STRONGEST PEAK
+    --------------------------------------------------
+
+    local peakAxis,
+        peakSigned =
+        strongestAxis(
+            peak
+        )
+
+    --------------------------------------------------
+    -- STRONGEST AVERAGE
+    --------------------------------------------------
+
+    local avgAxis,
+        avgSigned =
+        strongestAxis(
+            avg
+        )
 
     --------------------------------------------------
     -- RESULT
     --------------------------------------------------
-
-    local strongestAxis =
-        "NONE"
-
-
-    local strongestValue =
-        0
-
-
-    if peakAbs.x >
-        strongestValue then
-
-        strongestValue =
-            peakAbs.x
-
-        strongestAxis =
-            "X"
-
-    end
-
-
-    if peakAbs.y >
-        strongestValue then
-
-        strongestValue =
-            peakAbs.y
-
-        strongestAxis =
-            "Y"
-
-    end
-
-
-    if peakAbs.z >
-        strongestValue then
-
-        strongestValue =
-            peakAbs.z
-
-        strongestAxis =
-            "Z"
-
-    end
-
-
-    local strongestSigned =
-        0
-
-
-    if strongestAxis ==
-        "X" then
-
-        strongestSigned =
-            peak.x
-
-
-    elseif strongestAxis ==
-        "Y" then
-
-        strongestSigned =
-            peak.y
-
-
-    elseif strongestAxis ==
-        "Z" then
-
-        strongestSigned =
-            peak.z
-
-    end
-
 
     local result = {
 
@@ -917,120 +1001,191 @@ local function runTest(
         commandY =
             commandY,
 
-        baselineRates =
-            baselineRates,
+        power =
+            power,
 
-        peakRate =
+        baseline =
+            baseline,
+
+        peak =
             peak,
-
-        peakAbs =
-            peakAbs,
 
         peakTime =
             peakTime,
 
-        peakAngles =
-            peakAngles,
+        average =
+            avg,
 
-        strongestAxis =
-            strongestAxis,
+        averageAbs =
+            avgAbs,
 
-        strongestSigned =
-            strongestSigned,
+        angleAverage =
+            angleAverage,
 
-        strongestMagnitude =
-            strongestValue,
+        peakAxis =
+            peakAxis,
+
+        peakSigned =
+            peakSigned,
+
+        averageAxis =
+            avgAxis,
+
+        averageSigned =
+            avgSigned,
 
         sampleCount =
-            sampleCount
+            #samples,
+
+        secondHalfSamples =
+            #secondHalf
 
     }
 
-
     --------------------------------------------------
-    -- CONSOLE
+    -- OUTPUT
     --------------------------------------------------
 
     print("")
 
-
     print(
-        "PEAK ANGULAR RATE DELTA"
+        "PEAK RATE DELTA"
     )
-
 
     print(
         "X = " ..
-        fmt(
-            peak.x
-        )
-    )
-
-
-    print(
-        "Y = " ..
-        fmt(
-            peak.y
-        )
-    )
-
-
-    print(
-        "Z = " ..
-        fmt(
-            peak.z
-        )
-    )
-
-
-    print("")
-
-
-    print(
-        "PEAK DEGREES/SEC"
-    )
-
-
-    print(
-        "X = " ..
-        deg(
+        degPerSecond(
             peak.x
         ) ..
         " deg/s"
     )
 
-
     print(
         "Y = " ..
-        deg(
+        degPerSecond(
             peak.y
         ) ..
         " deg/s"
     )
 
-
     print(
         "Z = " ..
-        deg(
+        degPerSecond(
             peak.z
         ) ..
         " deg/s"
     )
 
+    print("")
+
+    print(
+        "AVERAGE RATE, SECOND HALF"
+    )
+
+    print(
+        "X = " ..
+        degPerSecond(
+            avg.x
+        ) ..
+        " deg/s"
+    )
+
+    print(
+        "Y = " ..
+        degPerSecond(
+            avg.y
+        ) ..
+        " deg/s"
+    )
+
+    print(
+        "Z = " ..
+        degPerSecond(
+            avg.z
+        ) ..
+        " deg/s"
+    )
 
     print("")
 
-
     print(
-        "STRONGEST AXIS = " ..
-        strongestAxis
+        "AVERAGE ABSOLUTE RATE"
     )
 
+    print(
+        "X = " ..
+        degPerSecond(
+            avgAbs.x
+        ) ..
+        " deg/s"
+    )
 
     print(
-        "STRONGEST SIGN = " ..
+        "Y = " ..
+        degPerSecond(
+            avgAbs.y
+        ) ..
+        " deg/s"
+    )
+
+    print(
+        "Z = " ..
+        degPerSecond(
+            avgAbs.z
+        ) ..
+        " deg/s"
+    )
+
+    print("")
+
+    print(
+        "AVERAGE ANGLE CHANGE"
+    )
+
+    print(
+        "X = " ..
+        fmt(
+            math.deg(
+                angleAverage.x
+            ),
+            5
+        ) ..
+        " deg"
+    )
+
+    print(
+        "Y = " ..
+        fmt(
+            math.deg(
+                angleAverage.y
+            ),
+            5
+        ) ..
+        " deg"
+    )
+
+    print(
+        "Z = " ..
+        fmt(
+            math.deg(
+                angleAverage.z
+            ),
+            5
+        ) ..
+        " deg"
+    )
+
+    print("")
+
+    print(
+        "PEAK AXIS = " ..
+        peakAxis
+    )
+
+    print(
+        "PEAK SIGN = " ..
         (
-            strongestSigned >= 0
+            peakSigned >= 0
             and
             "+"
             or
@@ -1038,22 +1193,43 @@ local function runTest(
         )
     )
 
+    print(
+        "AVERAGE AXIS = " ..
+        avgAxis
+    )
+
+    print(
+        "AVERAGE SIGN = " ..
+        (
+            avgSigned >= 0
+            and
+            "+"
+            or
+            "-"
+        )
+    )
+
+    print("")
 
     print(
         "SAMPLES = " ..
         tostring(
-            sampleCount
+            #samples
         )
     )
 
+    print(
+        "2ND HALF = " ..
+        tostring(
+            #secondHalf
+        )
+    )
 
     stopAll()
-
 
     return result
 
 end
-
 
 --------------------------------------------------
 -- BUILD REPORT
@@ -1063,14 +1239,11 @@ local function buildReport()
 
     reportLines = {}
 
-
     reportLines[#reportLines + 1] =
-        "=== DYNAMIC CALIBRATION ==="
-
+        "=== DYNAMIC CALIBRATION V3 ==="
 
     reportLines[#reportLines + 1] =
         ""
-
 
     reportLines[#reportLines + 1] =
         "VECTOR = +/-" ..
@@ -1078,13 +1251,17 @@ local function buildReport()
             TEST_VECTOR
         )
 
-
     reportLines[#reportLines + 1] =
-        "POWER = " ..
+        "X POWER = " ..
         tostring(
-            TEST_POWER
+            X_POWER
         )
 
+    reportLines[#reportLines + 1] =
+        "Y POWER = " ..
+        tostring(
+            Y_POWER
+        )
 
     reportLines[#reportLines + 1] =
         "PULSE = " ..
@@ -1093,7 +1270,6 @@ local function buildReport()
         ) ..
         " s"
 
-
     reportLines[#reportLines + 1] =
         "SAMPLE = " ..
         tostring(
@@ -1101,13 +1277,18 @@ local function buildReport()
         ) ..
         " s"
 
+    reportLines[#reportLines + 1] =
+        "SETTLE = " ..
+        tostring(
+            SETTLE_TIME
+        ) ..
+        " s"
 
     reportLines[#reportLines + 1] =
         ""
 
-
     --------------------------------------------------
-    -- RESULTS
+    -- EACH TEST
     --------------------------------------------------
 
     for _, result in ipairs(
@@ -1117,14 +1298,12 @@ local function buildReport()
         reportLines[#reportLines + 1] =
             "================================"
 
-
         reportLines[#reportLines + 1] =
             "TEST " ..
             result.label
 
-
         reportLines[#reportLines + 1] =
-            "COMMAND X=" ..
+            "VECTOR X=" ..
             tostring(
                 result.commandX
             ) ..
@@ -1133,127 +1312,150 @@ local function buildReport()
                 result.commandY
             )
 
+        reportLines[#reportLines + 1] =
+            "POWER=" ..
+            tostring(
+                result.power
+            )
 
         reportLines[#reportLines + 1] =
             ""
-
-
-        reportLines[#reportLines + 1] =
-            "PEAK RATE DELTA"
-
-
-        reportLines[#reportLines + 1] =
-            "X = " ..
-            fmt(
-                result.peakRate.x
-            )
-
-
-        reportLines[#reportLines + 1] =
-            "Y = " ..
-            fmt(
-                result.peakRate.y
-            )
-
-
-        reportLines[#reportLines + 1] =
-            "Z = " ..
-            fmt(
-                result.peakRate.z
-            )
-
-
-        reportLines[#reportLines + 1] =
-            ""
-
 
         reportLines[#reportLines + 1] =
             "PEAK DEG/SEC"
 
-
         reportLines[#reportLines + 1] =
             "X = " ..
-            deg(
-                result.peakRate.x
+            degPerSecond(
+                result.peak.x
             )
-
 
         reportLines[#reportLines + 1] =
             "Y = " ..
-            deg(
-                result.peakRate.y
+            degPerSecond(
+                result.peak.y
             )
-
 
         reportLines[#reportLines + 1] =
             "Z = " ..
-            deg(
-                result.peakRate.z
+            degPerSecond(
+                result.peak.z
             )
-
 
         reportLines[#reportLines + 1] =
             ""
 
-
         reportLines[#reportLines + 1] =
-            "PEAK TIME"
-
+            "AVERAGE DEG/SEC"
 
         reportLines[#reportLines + 1] =
             "X = " ..
-            fmt(
-                result.peakTime.x,
-                3
-            ) ..
-            " s"
-
+            degPerSecond(
+                result.average.x
+            )
 
         reportLines[#reportLines + 1] =
             "Y = " ..
-            fmt(
-                result.peakTime.y,
-                3
-            ) ..
-            " s"
-
+            degPerSecond(
+                result.average.y
+            )
 
         reportLines[#reportLines + 1] =
             "Z = " ..
-            fmt(
-                result.peakTime.z,
-                3
-            ) ..
-            " s"
-
+            degPerSecond(
+                result.average.z
+            )
 
         reportLines[#reportLines + 1] =
             ""
 
+        reportLines[#reportLines + 1] =
+            "ABS AVG DEG/SEC"
 
         reportLines[#reportLines + 1] =
-            "STRONGEST AXIS = " ..
-            result.strongestAxis
-
+            "X = " ..
+            degPerSecond(
+                result.averageAbs.x
+            )
 
         reportLines[#reportLines + 1] =
-            "STRONGEST SIGN = " ..
+            "Y = " ..
+            degPerSecond(
+                result.averageAbs.y
+            )
+
+        reportLines[#reportLines + 1] =
+            "Z = " ..
+            degPerSecond(
+                result.averageAbs.z
+            )
+
+        reportLines[#reportLines + 1] =
+            ""
+
+        reportLines[#reportLines + 1] =
+            "ANGLE CHANGE"
+
+        reportLines[#reportLines + 1] =
+            "X = " ..
+            fmt(
+                math.deg(
+                    result.angleAverage.x
+                ),
+                5
+            ) ..
+            " deg"
+
+        reportLines[#reportLines + 1] =
+            "Y = " ..
+            fmt(
+                math.deg(
+                    result.angleAverage.y
+                ),
+                5
+            ) ..
+            " deg"
+
+        reportLines[#reportLines + 1] =
+            "Z = " ..
+            fmt(
+                math.deg(
+                    result.angleAverage.z
+                ),
+                5
+            ) ..
+            " deg"
+
+        reportLines[#reportLines + 1] =
+            ""
+
+        reportLines[#reportLines + 1] =
+            "PEAK AXIS = " ..
+            result.peakAxis
+
+        reportLines[#reportLines + 1] =
+            "PEAK SIGN = " ..
             (
-                result.strongestSigned >= 0
+                result.peakSigned >= 0
                 and
                 "+"
                 or
                 "-"
             )
 
+        reportLines[#reportLines + 1] =
+            "AVG AXIS = " ..
+            result.averageAxis
 
         reportLines[#reportLines + 1] =
-            "STRONGEST RATE = " ..
-            deg(
-                result.strongestMagnitude
-            ) ..
-            " deg/s"
-
+            "AVG SIGN = " ..
+            (
+                result.averageSigned >= 0
+                and
+                "+"
+                or
+                "-"
+            )
 
         reportLines[#reportLines + 1] =
             "SAMPLES = " ..
@@ -1261,55 +1463,51 @@ local function buildReport()
                 result.sampleCount
             )
 
+        reportLines[#reportLines + 1] =
+            "2ND HALF = " ..
+            tostring(
+                result.secondHalfSamples
+            )
 
         reportLines[#reportLines + 1] =
             ""
 
     end
 
-
     --------------------------------------------------
-    -- CONCLUSION
+    -- FOOTER
     --------------------------------------------------
 
     reportLines[#reportLines + 1] =
         "================================"
 
-
     reportLines[#reportLines + 1] =
         "CALIBRATION COMPLETE"
-
 
     reportLines[#reportLines + 1] =
         ""
 
-
     reportLines[#reportLines + 1] =
         "UP/DOWN = SCROLL"
-
 
     reportLines[#reportLines + 1] =
         "PAGEUP/PAGEDOWN = FAST"
 
-
     reportLines[#reportLines + 1] =
         "HOME/END = TOP/BOTTOM"
-
 
     reportLines[#reportLines + 1] =
         "Q = EXIT"
 
 end
 
-
 --------------------------------------------------
--- DRAW REPORT
+-- DRAW
 --------------------------------------------------
 
 local function drawReport()
 
     term.clear()
-
 
     term.setCursorPos(
         1,
@@ -1335,16 +1533,12 @@ local function drawReport()
 
 
     if scroll < 0 then
-
         scroll = 0
-
     end
 
 
     if scroll > maximum then
-
         scroll = maximum
-
     end
 
 
@@ -1405,9 +1599,8 @@ local function drawReport()
 
 end
 
-
 --------------------------------------------------
--- STARTUP SCREEN
+-- STARTUP
 --------------------------------------------------
 
 term.clear()
@@ -1419,7 +1612,7 @@ term.setCursorPos(
 
 
 print(
-    "=== DYNAMIC CONTROL CALIBRATION ==="
+    "=== DYNAMIC CALIBRATION V3 ==="
 )
 
 print("")
@@ -1446,9 +1639,16 @@ print(
 )
 
 print(
-    "POWER = " ..
+    "X POWER = " ..
     tostring(
-        TEST_POWER
+        X_POWER
+    )
+)
+
+print(
+    "Y POWER = " ..
+    tostring(
+        Y_POWER
     )
 )
 
@@ -1464,6 +1664,14 @@ print(
     "SAMPLE = " ..
     tostring(
         SAMPLE_TIME
+    ) ..
+    " s"
+)
+
+print(
+    "SETTLE = " ..
+    tostring(
+        SETTLE_TIME
     ) ..
     " s"
 )
@@ -1517,10 +1725,6 @@ print(
 print("")
 
 print(
-    "The rocket must be FREE."
-)
-
-print(
     "Press SPACE to start."
 )
 
@@ -1561,17 +1765,6 @@ end
 
 
 --------------------------------------------------
--- INITIAL SAFE STATE
---------------------------------------------------
-
-stopAll()
-
-sleep(
-    1.0
-)
-
-
---------------------------------------------------
 -- TEST +X
 --------------------------------------------------
 
@@ -1579,7 +1772,8 @@ local result =
     runTest(
         "+X",
         TEST_VECTOR,
-        0
+        0,
+        X_POWER
     )
 
 
@@ -1592,6 +1786,10 @@ if result then
 
 end
 
+
+--------------------------------------------------
+-- BETWEEN
+--------------------------------------------------
 
 sleep(
     BETWEEN_TESTS
@@ -1606,7 +1804,8 @@ result =
     runTest(
         "-X",
         -TEST_VECTOR,
-        0
+        0,
+        X_POWER
     )
 
 
@@ -1633,7 +1832,8 @@ result =
     runTest(
         "+Y",
         0,
-        TEST_VECTOR
+        TEST_VECTOR,
+        Y_POWER
     )
 
 
@@ -1660,7 +1860,8 @@ result =
     runTest(
         "-Y",
         0,
-        -TEST_VECTOR
+        -TEST_VECTOR,
+        Y_POWER
     )
 
 
@@ -1687,11 +1888,6 @@ stopAll()
 
 buildReport()
 
-
---------------------------------------------------
--- RESULT SCREEN
---------------------------------------------------
-
 drawReport()
 
 
@@ -1708,23 +1904,14 @@ while true do
         )
 
 
-    --------------------------------------------------
-    -- UP
-    --------------------------------------------------
-
     if key ==
         keys.up then
 
         scroll =
             scroll - 1
 
-
         drawReport()
 
-
-    --------------------------------------------------
-    -- DOWN
-    --------------------------------------------------
 
     elseif key ==
         keys.down then
@@ -1732,13 +1919,8 @@ while true do
         scroll =
             scroll + 1
 
-
         drawReport()
 
-
-    --------------------------------------------------
-    -- PAGE UP
-    --------------------------------------------------
 
     elseif key ==
         keys.pageUp then
@@ -1754,13 +1936,8 @@ while true do
                 height - 2
             )
 
-
         drawReport()
 
-
-    --------------------------------------------------
-    -- PAGE DOWN
-    --------------------------------------------------
 
     elseif key ==
         keys.pageDown then
@@ -1776,13 +1953,8 @@ while true do
                 height - 2
             )
 
-
         drawReport()
 
-
-    --------------------------------------------------
-    -- HOME
-    --------------------------------------------------
 
     elseif key ==
         keys.home then
@@ -1790,13 +1962,8 @@ while true do
         scroll =
             0
 
-
         drawReport()
 
-
-    --------------------------------------------------
-    -- END
-    --------------------------------------------------
 
     elseif key ==
         keys["end"] then
@@ -1804,13 +1971,8 @@ while true do
         scroll =
             #reportLines
 
-
         drawReport()
 
-
-    --------------------------------------------------
-    -- REDRAW
-    --------------------------------------------------
 
     elseif key ==
         keys.r then
@@ -1819,10 +1981,6 @@ while true do
 
         drawReport()
 
-
-    --------------------------------------------------
-    -- EXIT
-    --------------------------------------------------
 
     elseif key ==
         keys.q then
@@ -1847,7 +2005,6 @@ term.setCursorPos(
     1,
     1
 )
-
 
 print(
     "DYNAMIC CALIBRATION COMPLETE"
