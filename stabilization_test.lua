@@ -1,18 +1,16 @@
--- VERTICAL FLIGHT STABILIZATION TEST
+-- VERTICAL IMPULSE STABILIZATION TEST
 -- CC:Tweaked
 --
 -- STANDALONE
 -- NO require()
 --
--- Controls:
---   Q = STOP
+-- Основная идея:
+--   1. Двигатели дают постоянную тягу.
+--   2. Для коррекции ракеты сопло кратковременно
+--      отклоняется на большой угол.
+--   3. После короткого импульса сопло возвращается в 0.
 --
--- Controls both:
---   THRUST: 0.0 .. 1.0
---   NOZZLE: -0.250 .. +0.250
---
--- The rocket should start upright.
--- Nose parallel to Y axis.
+-- Q = STOP
 
 --------------------------------------------------
 -- SETTINGS
@@ -21,52 +19,70 @@
 local UPDATE_INTERVAL = 0.05
 
 --------------------------------------------------
--- THRUST
+-- MAIN THRUST
 --------------------------------------------------
 
-local START_THRUST = 0.15
-local MAX_THRUST = 0.30
-local MIN_THRUST = 0.05
+-- Основная тяга двигателя.
+-- Диапазон 0.0 .. 1.0
 
+local TARGET_THRUST = 0.30
+
+-- Скорость набора основной тяги
 local THRUST_RAMP = 0.02
 
 --------------------------------------------------
 -- NOZZLE
 --------------------------------------------------
 
+-- Максимальное физическое отклонение сопла
 local MAX_VECTOR = 0.250
 
 --------------------------------------------------
--- STABILIZATION
+-- IMPULSE CONTROL
 --------------------------------------------------
 
-local ANGLE_KP = 0.50
-local RATE_KD = 0.12
+-- Минимальная ошибка, при которой вообще начинается
+-- боковая коррекция.
+local ERROR_DEADZONE = math.rad(1.5)
 
---------------------------------------------------
--- IMPULSE
---------------------------------------------------
-
-local IMPULSE_MIN = 0.06
-local IMPULSE_MAX = 0.250
-
-local IMPULSE_TIME = 0.20
-local IMPULSE_COOLDOWN = 0.15
-
---------------------------------------------------
--- ERROR LIMITS
---------------------------------------------------
-
-local SMALL_ERROR = math.rad(0.5)
-local MEDIUM_ERROR = math.rad(2.0)
+-- Ошибка для сильного импульса
 local LARGE_ERROR = math.rad(5.0)
 
+-- Очень большая ошибка
+local VERY_LARGE_ERROR = math.rad(10.0)
+
+-- Короткий боковой импульс
+local IMPULSE_TIME = 0.10
+
+-- Минимальная пауза между импульсами
+local IMPULSE_COOLDOWN = 0.20
+
 --------------------------------------------------
--- ANGULAR RATE LIMITS
+-- IMPULSE STRENGTH
 --------------------------------------------------
 
-local HIGH_RATE = math.rad(15.0)
-local CRITICAL_RATE = math.rad(30.0)
+-- Небольшая коррекция
+local SMALL_IMPULSE = 0.080
+
+-- Средняя коррекция
+local MEDIUM_IMPULSE = 0.150
+
+-- Сильная коррекция
+local LARGE_IMPULSE = 0.200
+
+-- Максимально допустимый импульс
+local MAX_IMPULSE = 0.250
+
+--------------------------------------------------
+-- ANGULAR RATE
+--------------------------------------------------
+
+-- Если вращение уже довольно быстрое в сторону ошибки,
+-- новый импульс не даём.
+local HOLD_RATE = math.rad(8.0)
+
+-- При этой скорости считаем вращение опасным.
+local CRITICAL_RATE = math.rad(20.0)
 
 --------------------------------------------------
 -- HELPERS
@@ -103,7 +119,6 @@ end
 local function degrees(radians)
 
     return radians * 180 / math.pi
-
 end
 
 
@@ -118,11 +133,10 @@ local function normalizeAngle(angle)
     end
 
     return angle
-
 end
 
 --------------------------------------------------
--- FIND GIMBAL SENSOR
+-- FIND GIMBAL
 --------------------------------------------------
 
 local gimbal = nil
@@ -149,7 +163,7 @@ for _, name in ipairs(peripheral.getNames()) do
 end
 
 --------------------------------------------------
--- FIND VECTOR THRUSTERS
+-- FIND THRUSTERS
 --------------------------------------------------
 
 local thrusters = {}
@@ -173,7 +187,6 @@ for _, name in ipairs(peripheral.getNames()) do
                     device = device
                 }
             )
-
         end
     end
 end
@@ -183,36 +196,22 @@ end
 --------------------------------------------------
 
 term.clear()
+term.setCursorPos(1, 1)
 
-term.setCursorPos(
-    1,
-    1
-)
-
-print(
-    "VERTICAL FLIGHT STABILIZATION"
-)
-
-print(
-    "============================="
-)
-
+print("VERTICAL IMPULSE STABILIZATION")
+print("==============================")
 print()
 
 if not gimbal then
 
-    print(
-        "ERROR: gimbal_sensor NOT FOUND"
-    )
+    print("ERROR: gimbal_sensor NOT FOUND")
 
     return
 end
 
 if #thrusters == 0 then
 
-    print(
-        "ERROR: liquid_vector_thruster NOT FOUND"
-    )
+    print("ERROR: liquid_vector_thruster NOT FOUND")
 
     return
 end
@@ -230,43 +229,30 @@ print(
 print()
 
 print(
-    "Place rocket vertically."
+    "TARGET THRUST: " ..
+    string.format(
+        "%.3f",
+        TARGET_THRUST
+    )
 )
 
 print(
-    "Nose parallel to Y axis."
+    "MAX NOZZLE: +/-" ..
+    string.format(
+        "%.3f",
+        MAX_VECTOR
+    )
 )
 
 print()
 
-print(
-    "Starting thrust: " ..
-    tostring(START_THRUST)
-)
-
-print(
-    "Maximum thrust: " ..
-    tostring(MAX_THRUST)
-)
-
-print(
-    "Maximum nozzle: +/-" ..
-    tostring(MAX_VECTOR)
-)
-
+print("Place rocket vertically.")
+print("Nose parallel to Y axis.")
 print()
 
-print(
-    "Press any key to capture"
-)
+print("Press any key to capture attitude.")
 
-print(
-    "the current attitude."
-)
-
-os.pullEvent(
-    "key"
-)
+os.pullEvent("key")
 
 --------------------------------------------------
 -- SET VECTOR
@@ -300,9 +286,7 @@ local function setVector(x, y)
 
             end
         )
-
     end
-
 end
 
 --------------------------------------------------
@@ -342,15 +326,12 @@ local function setThrust(value)
 
                 end
             )
-
         end
-
     end
-
 end
 
 --------------------------------------------------
--- READ SENSORS
+-- READ GIMBAL
 --------------------------------------------------
 
 local function readSensors()
@@ -382,7 +363,6 @@ local function readSensors()
         not okRates then
 
         return nil
-
     end
 
     if type(angles) ~= "table"
@@ -390,7 +370,6 @@ local function readSensors()
         type(rates) ~= "table" then
 
         return nil
-
     end
 
     return
@@ -418,7 +397,6 @@ local function readSensors()
         tonumber(
             rates[3]
         ) or 0
-
 end
 
 --------------------------------------------------
@@ -435,9 +413,7 @@ local initialA,
 
 if initialA == nil then
 
-    print(
-        "ERROR: SENSOR READ FAILED"
-    )
+    print("ERROR: SENSOR READ FAILED")
 
     return
 end
@@ -459,25 +435,32 @@ local targetC =
 -- STATE
 --------------------------------------------------
 
-local thrust =
-    START_THRUST
-
 local running =
     true
 
 local totalTime =
     0
 
+local thrust =
+    0
+
+--------------------------------------------------
+-- IMPULSE STATE
+--------------------------------------------------
+
+local impulseActive =
+    false
+
 local impulseUntil =
     0
 
-local nextImpulse =
+local nextImpulseAllowed =
     0
 
-local lastCommandX =
+local currentImpulseX =
     0
 
-local lastCommandY =
+local currentImpulseY =
     0
 
 --------------------------------------------------
@@ -490,56 +473,50 @@ setVector(
 )
 
 setThrust(
-    thrust
+    0
 )
 
 term.clear()
+term.setCursorPos(1, 1)
 
-term.setCursorPos(
-    1,
-    1
-)
-
-print(
-    "VERTICAL TEST ACTIVE"
-)
-
-print(
-    "===================="
-)
-
+print("VERTICAL IMPULSE TEST")
+print("=====================")
 print()
 
 print(
-    "TARGET ATTITUDE"
-)
-
-print(
     string.format(
-        "A = %.3f deg",
+        "TARGET A %.3f deg",
         degrees(targetA)
     )
 )
 
 print(
     string.format(
-        "B = %.3f deg",
+        "TARGET B %.3f deg",
         degrees(targetB)
     )
 )
 
 print(
     string.format(
-        "C = %.3f deg",
+        "TARGET C %.3f deg",
         degrees(targetC)
     )
 )
 
 print()
 
+print("Main thrust will ramp to:")
 print(
-    "Q = STOP"
+    string.format(
+        "%.3f",
+        TARGET_THRUST
+    )
 )
+
+print()
+
+print("Q = STOP")
 
 --------------------------------------------------
 -- TIMER
@@ -588,6 +565,23 @@ while running do
             UPDATE_INTERVAL
 
         --------------------------------------------------
+        -- THRUST RAMP
+        --------------------------------------------------
+
+        if thrust < TARGET_THRUST then
+
+            thrust =
+                math.min(
+                    TARGET_THRUST,
+                    thrust + THRUST_RAMP
+                )
+
+            setThrust(
+                thrust
+            )
+        end
+
+        --------------------------------------------------
         -- SENSOR READ
         --------------------------------------------------
 
@@ -602,19 +596,13 @@ while running do
         if currentA ~= nil then
 
             --------------------------------------------------
-            -- ATTITUDE ERRORS
+            -- ERROR
             --------------------------------------------------
 
             local errorA =
                 normalizeAngle(
                     targetA -
                     currentA
-                )
-
-            local errorB =
-                normalizeAngle(
-                    targetB -
-                    currentB
                 )
 
             local errorC =
@@ -624,68 +612,14 @@ while running do
                 )
 
             --------------------------------------------------
-            -- PITCH
+            -- MAGNITUDE
             --------------------------------------------------
 
-            local pitchError =
-                errorA
+            local absA =
+                math.abs(errorA)
 
-            --------------------------------------------------
-            -- YAW
-            --------------------------------------------------
-
-            local yawError =
-                errorC
-
-            --------------------------------------------------
-            -- CONTROLLER
-            --------------------------------------------------
-
-            local pitchControl =
-                (
-                    ANGLE_KP *
-                    pitchError
-                )
-                -
-                (
-                    RATE_KD *
-                    rateA
-                )
-
-            local yawControl =
-                (
-                    ANGLE_KP *
-                    yawError
-                )
-                -
-                (
-                    RATE_KD *
-                    rateC
-                )
-
-            --------------------------------------------------
-            -- MAGNITUDES
-            --------------------------------------------------
-
-            local pitchMagnitude =
-                math.abs(
-                    pitchError
-                )
-
-            local yawMagnitude =
-                math.abs(
-                    yawError
-                )
-
-            local pitchRateMagnitude =
-                math.abs(
-                    rateA
-                )
-
-            local yawRateMagnitude =
-                math.abs(
-                    rateC
-                )
+            local absC =
+                math.abs(errorC)
 
             --------------------------------------------------
             -- CURRENT TIME
@@ -695,333 +629,295 @@ while running do
                 os.clock()
 
             --------------------------------------------------
-            -- DEFAULT
+            -- ACTIVE IMPULSE
             --------------------------------------------------
 
-            local commandX =
-                0
+            if impulseActive then
 
-            local commandY =
-                0
+                --------------------------------------------------
+                -- Keep strong side thrust for a SHORT
+                -- fixed period.
+                --------------------------------------------------
 
-            --------------------------------------------------
-            -- PITCH IMPULSE
-            --------------------------------------------------
+                if now < impulseUntil then
 
-            if now >= nextImpulse
-                and
-                pitchMagnitude >
-                SMALL_ERROR then
-
-                local impulse =
-                    IMPULSE_MIN
-
-                if pitchMagnitude >
-                    MEDIUM_ERROR then
-
-                    impulse =
-                        0.120
-                end
-
-                if pitchMagnitude >
-                    LARGE_ERROR then
-
-                    impulse =
-                        0.200
-                end
-
-                local requested =
-                    math.abs(
-                        pitchControl
+                    setVector(
+                        currentImpulseX,
+                        currentImpulseY
                     )
-
-                if requested >
-                    impulse then
-
-                    impulse =
-                        math.min(
-                            requested,
-                            IMPULSE_MAX
-                        )
-
-                end
-
-                --------------------------------------------------
-                -- HIGH RATE:
-                -- BRAKE CURRENT ROTATION
-                --------------------------------------------------
-
-                if pitchRateMagnitude >
-                    CRITICAL_RATE then
-
-                    commandY =
-                        -sign(rateA) *
-                        math.min(
-                            0.150,
-                            pitchRateMagnitude /
-                            math.rad(100)
-                        )
-
-                elseif pitchRateMagnitude >
-                    HIGH_RATE
-                    and
-                    pitchMagnitude <
-                    LARGE_ERROR then
-
-                    commandY =
-                        -sign(rateA) *
-                        0.100
 
                 else
 
-                    commandY =
-                        -sign(
-                            pitchControl
-                        ) *
-                        impulse
+                    --------------------------------------------------
+                    -- IMPORTANT:
+                    -- impulse is finished.
+                    -- Return nozzle to neutral.
+                    --------------------------------------------------
 
-                end
+                    impulseActive =
+                        false
 
-            end
+                    currentImpulseX =
+                        0
 
-            --------------------------------------------------
-            -- YAW IMPULSE
-            --------------------------------------------------
+                    currentImpulseY =
+                        0
 
-            if now >= nextImpulse
-                and
-                yawMagnitude >
-                SMALL_ERROR then
-
-                local impulse =
-                    IMPULSE_MIN
-
-                if yawMagnitude >
-                    MEDIUM_ERROR then
-
-                    impulse =
-                        0.120
-                end
-
-                if yawMagnitude >
-                    LARGE_ERROR then
-
-                    impulse =
-                        0.200
-                end
-
-                local requested =
-                    math.abs(
-                        yawControl
+                    setVector(
+                        0,
+                        0
                     )
 
-                if requested >
-                    impulse then
-
-                    impulse =
-                        math.min(
-                            requested,
-                            IMPULSE_MAX
-                        )
-
+                    nextImpulseAllowed =
+                        now +
+                        IMPULSE_COOLDOWN
                 end
+
+            --------------------------------------------------
+            -- NO ACTIVE IMPULSE
+            --------------------------------------------------
+
+            else
+
+                setVector(
+                    0,
+                    0
+                )
 
                 --------------------------------------------------
-                -- HIGH RATE:
-                -- BRAKE CURRENT ROTATION
+                -- Only create a new pulse after cooldown.
                 --------------------------------------------------
 
-                if yawRateMagnitude >
-                    CRITICAL_RATE then
+                if now >= nextImpulseAllowed then
 
-                    commandX =
-                        -sign(rateC) *
-                        math.min(
-                            0.150,
-                            yawRateMagnitude /
-                            math.rad(100)
+                    local impulseX =
+                        0
+
+                    local impulseY =
+                        0
+
+                    --------------------------------------------------
+                    -- CHOOSE DOMINANT AXIS
+                    --
+                    -- We intentionally control only ONE axis
+                    -- at a time.
+                    --------------------------------------------------
+
+                    local controlAxis =
+                        nil
+
+                    if absA >
+                        ERROR_DEADZONE
+                        and
+                        absA >= absC then
+
+                        controlAxis =
+                            "PITCH"
+
+                    elseif absC >
+                        ERROR_DEADZONE then
+
+                        controlAxis =
+                            "YAW"
+
+                    end
+
+                    --------------------------------------------------
+                    -- PITCH IMPULSE
+                    --------------------------------------------------
+
+                    if controlAxis ==
+                        "PITCH" then
+
+                        local direction =
+                            sign(errorA)
+
+                        --------------------------------------------------
+                        -- If rocket is already rotating toward the
+                        -- target quickly, DO NOT add another pulse.
+                        --
+                        -- This prevents oscillation.
+                        --------------------------------------------------
+
+                        local rateCorrectDirection =
+                            rateA *
+                            errorA
+
+                        --------------------------------------------------
+                        -- Critical rotation:
+                        -- apply a short braking impulse.
+                        --------------------------------------------------
+
+                        if math.abs(rateA) >
+                            CRITICAL_RATE then
+
+                            impulseY =
+                                -sign(rateA) *
+                                SMALL_IMPULSE
+
+                        elseif
+                            rateCorrectDirection > 0
+                            and
+                            math.abs(rateA) >
+                            HOLD_RATE then
+
+                            --------------------------------------------------
+                            -- Already rotating in correct direction.
+                            -- Let it continue naturally.
+                            --------------------------------------------------
+
+                            impulseY =
+                                0
+
+                        else
+
+                            --------------------------------------------------
+                            -- Select impulse strength from error.
+                            --------------------------------------------------
+
+                            local magnitude =
+                                SMALL_IMPULSE
+
+                            if absA >
+                                LARGE_ERROR then
+
+                                magnitude =
+                                    LARGE_IMPULSE
+
+                            elseif absA >
+                                math.rad(2.5) then
+
+                                magnitude =
+                                    MEDIUM_IMPULSE
+                            end
+
+                            if absA >
+                                VERY_LARGE_ERROR then
+
+                                magnitude =
+                                    MAX_IMPULSE
+                            end
+
+                            impulseY =
+                                direction *
+                                magnitude
+                        end
+
+                    --------------------------------------------------
+                    -- YAW IMPULSE
+                    --------------------------------------------------
+
+                    elseif controlAxis ==
+                        "YAW" then
+
+                        local direction =
+                            sign(errorC)
+
+                        local rateCorrectDirection =
+                            rateC *
+                            errorC
+
+                        --------------------------------------------------
+                        -- Critical rotation:
+                        -- braking pulse.
+                        --------------------------------------------------
+
+                        if math.abs(rateC) >
+                            CRITICAL_RATE then
+
+                            impulseX =
+                                -sign(rateC) *
+                                SMALL_IMPULSE
+
+                        elseif
+                            rateCorrectDirection > 0
+                            and
+                            math.abs(rateC) >
+                            HOLD_RATE then
+
+                            impulseX =
+                                0
+
+                        else
+
+                            local magnitude =
+                                SMALL_IMPULSE
+
+                            if absC >
+                                LARGE_ERROR then
+
+                                magnitude =
+                                    LARGE_IMPULSE
+
+                            elseif absC >
+                                math.rad(2.5) then
+
+                                magnitude =
+                                    MEDIUM_IMPULSE
+                            end
+
+                            if absC >
+                                VERY_LARGE_ERROR then
+
+                                magnitude =
+                                    MAX_IMPULSE
+                            end
+
+                            impulseX =
+                                direction *
+                                magnitude
+                        end
+                    end
+
+                    --------------------------------------------------
+                    -- START IMPULSE
+                    --------------------------------------------------
+
+                    if impulseX ~= 0
+                        or
+                        impulseY ~= 0 then
+
+                        currentImpulseX =
+                            clamp(
+                                impulseX,
+                                -MAX_VECTOR,
+                                MAX_VECTOR
+                            )
+
+                        currentImpulseY =
+                            clamp(
+                                impulseY,
+                                -MAX_VECTOR,
+                                MAX_VECTOR
+                            )
+
+                        impulseActive =
+                            true
+
+                        impulseUntil =
+                            now +
+                            IMPULSE_TIME
+
+                        setVector(
+                            currentImpulseX,
+                            currentImpulseY
                         )
-
-                elseif yawRateMagnitude >
-                    HIGH_RATE
-                    and
-                    yawMagnitude <
-                    LARGE_ERROR then
-
-                    commandX =
-                        -sign(rateC) *
-                        0.100
-
-                else
-
-                    commandX =
-                        -sign(
-                            yawControl
-                        ) *
-                        impulse
-
+                    end
                 end
-
             end
-
-            --------------------------------------------------
-            -- IMPULSE TIMER
-            --------------------------------------------------
-
-            if commandX ~= 0
-                or
-                commandY ~= 0 then
-
-                impulseUntil =
-                    now +
-                    IMPULSE_TIME
-
-                nextImpulse =
-                    impulseUntil +
-                    IMPULSE_COOLDOWN
-
-            end
-
-            --------------------------------------------------
-            -- AFTER IMPULSE
-            --------------------------------------------------
-
-            if now >= impulseUntil
-                and
-                now < nextImpulse then
-
-                commandX =
-                    0
-
-                commandY =
-                    0
-
-            end
-
-            --------------------------------------------------
-            -- LIMIT
-            --------------------------------------------------
-
-            commandX =
-                clamp(
-                    commandX,
-                    -MAX_VECTOR,
-                    MAX_VECTOR
-                )
-
-            commandY =
-                clamp(
-                    commandY,
-                    -MAX_VECTOR,
-                    MAX_VECTOR
-                )
-
-            --------------------------------------------------
-            -- SEND NOZZLE COMMAND
-            --------------------------------------------------
-
-            setVector(
-                commandX,
-                commandY
-            )
-
-            lastCommandX =
-                commandX
-
-            lastCommandY =
-                commandY
-
-            --------------------------------------------------
-            -- THRUST CONTROL
-            --------------------------------------------------
-
-            local attitudeMagnitude =
-                math.max(
-                    pitchMagnitude,
-                    yawMagnitude
-                )
-
-            local rateMagnitude =
-                math.max(
-                    pitchRateMagnitude,
-                    yawRateMagnitude
-                )
-
-            --------------------------------------------------
-            -- INITIAL RAMP
-            --------------------------------------------------
-
-            if totalTime <
-                5.0 then
-
-                thrust =
-                    math.min(
-                        MAX_THRUST,
-                        thrust +
-                        THRUST_RAMP
-                    )
-
-            end
-
-            --------------------------------------------------
-            -- REDUCE THRUST IF UNSTABLE
-            --------------------------------------------------
-
-            if attitudeMagnitude >
-                LARGE_ERROR
-                or
-                rateMagnitude >
-                CRITICAL_RATE then
-
-                thrust =
-                    math.max(
-                        MIN_THRUST,
-                        thrust -
-                        0.03
-                    )
-
-            elseif attitudeMagnitude <
-                SMALL_ERROR
-                and
-                rateMagnitude <
-                math.rad(3) then
-
-                thrust =
-                    math.min(
-                        MAX_THRUST,
-                        thrust +
-                        0.01
-                    )
-
-            end
-
-            --------------------------------------------------
-            -- APPLY THRUST
-            --------------------------------------------------
-
-            setThrust(
-                thrust
-            )
 
             --------------------------------------------------
             -- DISPLAY
             --------------------------------------------------
 
             term.clear()
-
             term.setCursorPos(
                 1,
                 1
             )
 
-            print(
-                "VERTICAL FLIGHT TEST"
-            )
-
-            print(
-                "===================="
-            )
-
+            print("VERTICAL IMPULSE TEST")
+            print("=====================")
             print()
 
             print(
@@ -1042,21 +938,14 @@ while running do
 
             print(
                 string.format(
-                    "A %8.3f deg",
+                    "A      %8.3f deg",
                     degrees(currentA)
                 )
             )
 
             print(
                 string.format(
-                    "B %8.3f deg",
-                    degrees(currentB)
-                )
-            )
-
-            print(
-                string.format(
-                    "C %8.3f deg",
+                    "C      %8.3f deg",
                     degrees(currentC)
                 )
             )
@@ -1065,14 +954,14 @@ while running do
 
             print(
                 string.format(
-                    "ERR A %7.3f deg",
+                    "ERR A  %8.3f deg",
                     degrees(errorA)
                 )
             )
 
             print(
                 string.format(
-                    "ERR C %7.3f deg",
+                    "ERR C  %8.3f deg",
                     degrees(errorC)
                 )
             )
@@ -1081,14 +970,14 @@ while running do
 
             print(
                 string.format(
-                    "RATE A %7.3f",
+                    "RATE A %8.3f",
                     degrees(rateA)
                 )
             )
 
             print(
                 string.format(
-                    "RATE C %7.3f",
+                    "RATE C %8.3f",
                     degrees(rateC)
                 )
             )
@@ -1097,26 +986,41 @@ while running do
 
             print(
                 string.format(
-                    "NOZZLE X %+7.4f",
-                    commandX
+                    "NOZZLE X %+7.3f",
+                    currentImpulseX
                 )
             )
 
             print(
                 string.format(
-                    "NOZZLE Y %+7.4f",
-                    commandY
+                    "NOZZLE Y %+7.3f",
+                    currentImpulseY
                 )
             )
 
             print()
 
+            if impulseActive then
+
+                print(
+                    "IMPULSE: ACTIVE"
+                )
+
+            else
+
+                print(
+                    "IMPULSE: READY"
+                )
+            end
+
+            print()
+
             print(
-                "VECTOR LIMIT 0.250"
+                "MAX VECTOR 0.250"
             )
 
             print(
-                "THRUST LIMIT 1.000"
+                "THRUST 0.000..1.000"
             )
 
             print()
@@ -1130,14 +1034,12 @@ while running do
 
             print()
 
-            print(
-                "Q = STOP"
-            )
+            print("Q = STOP")
 
         else
 
             --------------------------------------------------
-            -- SENSOR ERROR
+            -- SENSOR FAILURE
             --------------------------------------------------
 
             setVector(
@@ -1150,16 +1052,12 @@ while running do
             )
 
             term.clear()
-
             term.setCursorPos(
                 1,
                 1
             )
 
-            print(
-                "SENSOR READ ERROR"
-            )
-
+            print("SENSOR READ ERROR")
         end
 
         --------------------------------------------------
@@ -1170,9 +1068,7 @@ while running do
             os.startTimer(
                 UPDATE_INTERVAL
             )
-
     end
-
 end
 
 --------------------------------------------------
@@ -1189,22 +1085,9 @@ setThrust(
 )
 
 term.clear()
-
 term.setCursorPos(
     1,
     1
 )
 
-print(
-    "VERTICAL TEST STOPPED"
-)
-
-print()
-
-print(
-    "THRUST = 0"
-)
-
-print(
-    "NOZZLE = 0 / 0"
-)
+print("TEST STOPPED")
